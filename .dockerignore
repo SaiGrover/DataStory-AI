@@ -1,0 +1,12 @@
+.env
+*.env
+.git
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+web/node_modules/
+web/dist/
+web/.env
+data/uploads/
+reports/

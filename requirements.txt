@@ -1,0 +1,30 @@
+# Backend
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+gunicorn>=21.2.0
+python-multipart>=0.0.9
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Machine learning
+scikit-learn>=1.4.0
+imbalanced-learn>=0.12.0
+
+# AI and HTTP
+requests>=2.31.0
+httpx>=0.27.0
+python-dotenv>=1.0.0
+
+# Storage
+pydantic>=2.7.0
+sqlalchemy>=2.0.30
+aiosqlite>=0.20.0
+
+# RAG / vector search
+faiss-cpu>=1.8.0
+
+# Reporting / charts support
+plotly>=5.20.0
+matplotlib>=3.8.0
