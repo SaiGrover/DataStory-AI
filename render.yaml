@@ -13,3 +13,9 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: DATASTORY_TRAIN_JOBS
+        value: "1"
+      - key: DATASTORY_MAX_CV_FOLDS
+        value: "3"
+      - key: DATASTORY_NUMERIC_THREADS
+        value: "1"

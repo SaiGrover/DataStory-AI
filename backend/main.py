@@ -5,7 +5,14 @@ Provides REST endpoints for dataset processing, ML training, and AI generation.
 import os
 import uuid
 import logging
+from threading import Lock
 from typing import Optional, List
+
+# Keep numerical libraries inside the memory/CPU envelope of small hosted instances.
+# These must be set before NumPy and scikit-learn are imported.
+_numeric_threads = os.getenv("DATASTORY_NUMERIC_THREADS", "1")
+for _thread_variable in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ[_thread_variable] = _numeric_threads
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,6 +61,14 @@ app.add_middleware(
 # In-memory dataset store (keyed by dataset_id)
 _dataset_store: dict = {}
 _results_store: dict = {}
+_training_lock = Lock()
+
+
+def _store_active_dataset(dataset_id: str, df: pd.DataFrame) -> None:
+    """Keep only the active dataset on the single-instance demo backend."""
+    _dataset_store.clear()
+    _results_store.clear()
+    _dataset_store[dataset_id] = df
 
 SAMPLE_DATASETS = {
     "titanic": {"name": "Titanic", "path": "data/sample_datasets/titanic.csv", "description": "Passenger survival data"},
@@ -132,7 +147,7 @@ def load_sample(sample_id: str):
         raise HTTPException(status_code=404, detail=f"Sample file missing: {meta['path']}")
     df = pd.read_csv(meta["path"])
     dataset_id = str(uuid.uuid4())[:8]
-    _dataset_store[dataset_id] = df
+    _store_active_dataset(dataset_id, df)
     profile = profile_dataset(df)
     save_dataset_meta(dataset_id, f"{sample_id}.csv", df.shape[0], df.shape[1])
     return {
@@ -165,7 +180,7 @@ async def upload_dataset(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=f"Could not parse CSV: {e}")
 
     dataset_id = str(uuid.uuid4())[:8]
-    _dataset_store[dataset_id] = df
+    _store_active_dataset(dataset_id, df)
 
     profile = profile_dataset(df)
     save_dataset_meta(dataset_id, file.filename, df.shape[0], df.shape[1])
@@ -193,7 +208,9 @@ def clean_dataset(dataset_id: str, body: CleanRequest):
     if body.preview_only:
         return preview_cleaning(df, body.config)
     cleaned = apply_cleaning(df, body.config)
-    _dataset_store[f"{dataset_id}_cleaned"] = cleaned
+    # Replace the original frame instead of retaining two full in-memory copies.
+    _dataset_store[dataset_id] = cleaned
+    _dataset_store.pop(f"{dataset_id}_cleaned", None)
     meta = get_dataset_meta(dataset_id) or {}
     save_dataset_meta(dataset_id, meta.get("filename", f"{dataset_id}.csv"), cleaned.shape[0], cleaned.shape[1])
     profile = profile_dataset(cleaned)
@@ -297,15 +314,20 @@ def select_target(dataset_id: str, body: dict):
 @app.post("/train/{dataset_id}")
 def train(dataset_id: str, body: TrainRequest):
     df = _get_df(dataset_id, prefer_cleaned=True)
-    results = train_models(
-        df=df,
-        target=body.target,
-        task_type=body.task_type,
-        model_names=body.model_names,
-        imbalance_strategy=body.imbalance_strategy,
-        cv_folds=body.cv_folds,
-        test_size=body.test_size,
-    )
+    if not _training_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Another model training job is already running. Please wait for it to finish.")
+    try:
+        results = train_models(
+            df=df,
+            target=body.target,
+            task_type=body.task_type,
+            model_names=body.model_names,
+            imbalance_strategy=body.imbalance_strategy,
+            cv_folds=body.cv_folds,
+            test_size=body.test_size,
+        )
+    finally:
+        _training_lock.release()
     _results_store[dataset_id] = results
     save_results(dataset_id, results)
     return {"results": results}

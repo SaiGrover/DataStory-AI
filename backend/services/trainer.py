@@ -1,3 +1,6 @@
+import gc
+import os
+
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any, Optional
@@ -35,31 +38,31 @@ from backend.services.openrouter import generate_explanation
 
 CLASSIFICATION_GRIDS = {
     "Logistic Regression": {
-        "clf__C": [0.01, 0.1, 1.0, 10.0],
+        "clf__C": [0.1, 1.0, 10.0],
         "clf__solver": ["lbfgs"],
         "clf__max_iter": [500],
     },
     "Decision Tree Classifier": {
-        "clf__max_depth": [3, 5, 10, None],
-        "clf__min_samples_split": [2, 5, 10],
-        "clf__min_samples_leaf": [1, 2, 4],
-        "clf__criterion": ["gini", "entropy"],
+        "clf__max_depth": [5, 10],
+        "clf__min_samples_split": [2, 10],
+        "clf__min_samples_leaf": [1, 4],
+        "clf__criterion": ["gini"],
     },
     "Random Forest Classifier": {
-        "clf__n_estimators": [100, 200],
-        "clf__max_depth": [5, 10, None],
-        "clf__min_samples_split": [2, 5],
+        "clf__n_estimators": [80],
+        "clf__max_depth": [8, None],
+        "clf__min_samples_split": [2],
         "clf__min_samples_leaf": [1, 2],
     },
     "Support Vector Machine": {
-        "clf__C": [0.1, 1.0, 10.0],
-        "clf__kernel": ["rbf", "linear"],
-        "clf__gamma": ["scale", "auto"],
+        "clf__C": [0.5, 1.0],
+        "clf__kernel": ["rbf"],
+        "clf__gamma": ["scale"],
     },
     "K-Nearest Neighbors": {
-        "clf__n_neighbors": [3, 5, 7, 11],
+        "clf__n_neighbors": [3, 7, 11],
         "clf__weights": ["uniform", "distance"],
-        "clf__metric": ["euclidean", "manhattan"],
+        "clf__metric": ["euclidean"],
     },
     "Naive Bayes": {
         "clf__var_smoothing": [1e-9, 1e-8, 1e-7, 1e-6],
@@ -67,11 +70,11 @@ CLASSIFICATION_GRIDS = {
     "Gradient Boosting Classifier": {
         "clf__n_estimators": [50, 100],
         "clf__learning_rate": [0.05, 0.1],
-        "clf__max_depth": [2, 3],
+        "clf__max_depth": [2],
     },
     "Extra Trees Classifier": {
-        "clf__n_estimators": [100, 200],
-        "clf__max_depth": [5, 10, None],
+        "clf__n_estimators": [80],
+        "clf__max_depth": [8, None],
         "clf__min_samples_leaf": [1, 2],
     },
 }
@@ -84,30 +87,30 @@ REGRESSION_GRIDS = {
         "clf__alpha": [0.01, 0.1, 1.0, 10.0, 100.0],
     },
     "Decision Tree Regressor": {
-        "clf__max_depth": [3, 5, 10, None],
-        "clf__min_samples_split": [2, 5, 10],
-        "clf__min_samples_leaf": [1, 2, 4],
+        "clf__max_depth": [5, 10],
+        "clf__min_samples_split": [2, 10],
+        "clf__min_samples_leaf": [1, 4],
     },
     "Random Forest Regressor": {
-        "clf__n_estimators": [100, 200],
-        "clf__max_depth": [5, 10, None],
-        "clf__min_samples_split": [2, 5],
+        "clf__n_estimators": [80],
+        "clf__max_depth": [8, None],
+        "clf__min_samples_split": [2],
         "clf__min_samples_leaf": [1, 2],
     },
     "Gradient Boosting Regressor": {
-        "clf__n_estimators": [100, 200],
-        "clf__learning_rate": [0.05, 0.1, 0.2],
-        "clf__max_depth": [3, 5],
+        "clf__n_estimators": [60, 100],
+        "clf__learning_rate": [0.05, 0.1],
+        "clf__max_depth": [2],
     },
     "Extra Trees Regressor": {
-        "clf__n_estimators": [100, 200],
-        "clf__max_depth": [5, 10, None],
+        "clf__n_estimators": [80],
+        "clf__max_depth": [8, None],
         "clf__min_samples_leaf": [1, 2],
     },
     "Support Vector Regressor": {
-        "clf__C": [0.1, 1.0, 10.0],
-        "clf__epsilon": [0.01, 0.1, 0.2],
-        "clf__kernel": ["rbf", "linear"],
+        "clf__C": [0.5, 1.0],
+        "clf__epsilon": [0.05, 0.1],
+        "clf__kernel": ["rbf"],
     },
 }
 
@@ -116,6 +119,9 @@ SUPPORTS_CLASS_WEIGHT = {
     "Logistic Regression", "Decision Tree Classifier",
     "Random Forest Classifier", "Support Vector Machine", "Extra Trees Classifier",
 }
+TRAIN_JOBS = max(1, int(os.getenv("DATASTORY_TRAIN_JOBS", "1")))
+MAX_CV_FOLDS = max(2, int(os.getenv("DATASTORY_MAX_CV_FOLDS", "3")))
+DENSE_PREPROCESSING_MODELS = {"Naive Bayes"}
 
 
 def get_recommended_models(task_type: str) -> List[str]:
@@ -145,7 +151,7 @@ def _get_estimator(name: str, task: str, class_weight=None):
         elif name == "Decision Tree Classifier":
             return DecisionTreeClassifier(class_weight=cw)
         elif name == "Random Forest Classifier":
-            return RandomForestClassifier(class_weight=cw, n_jobs=-1)
+            return RandomForestClassifier(class_weight=cw, n_jobs=TRAIN_JOBS)
         elif name == "Support Vector Machine":
             return SVC(class_weight=cw)
         elif name == "K-Nearest Neighbors":
@@ -155,7 +161,7 @@ def _get_estimator(name: str, task: str, class_weight=None):
         elif name == "Gradient Boosting Classifier":
             return GradientBoostingClassifier()
         elif name == "Extra Trees Classifier":
-            return ExtraTreesClassifier(class_weight=cw, n_jobs=-1)
+            return ExtraTreesClassifier(class_weight=cw, n_jobs=TRAIN_JOBS)
     else:
         if name == "Linear Regression":
             return LinearRegression()
@@ -164,17 +170,17 @@ def _get_estimator(name: str, task: str, class_weight=None):
         elif name == "Decision Tree Regressor":
             return DecisionTreeRegressor()
         elif name == "Random Forest Regressor":
-            return RandomForestRegressor(n_jobs=-1)
+            return RandomForestRegressor(n_jobs=TRAIN_JOBS)
         elif name == "Gradient Boosting Regressor":
             return GradientBoostingRegressor()
         elif name == "Extra Trees Regressor":
-            return ExtraTreesRegressor(n_jobs=-1)
+            return ExtraTreesRegressor(n_jobs=TRAIN_JOBS)
         elif name == "Support Vector Regressor":
             return SVR()
     raise ValueError(f"Unknown model: {name}")
 
 
-def _build_preprocessor(X: pd.DataFrame, scale: bool):
+def _build_preprocessor(X: pd.DataFrame, scale: bool, dense_output: bool = False):
     num_cols = X.select_dtypes(include="number").columns.tolist()
     cat_cols = X.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
 
@@ -184,9 +190,14 @@ def _build_preprocessor(X: pd.DataFrame, scale: bool):
 
     num_pipe = Pipeline(num_steps)
     try:
-        encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+        encoder = OneHotEncoder(
+            handle_unknown="infrequent_if_exist",
+            min_frequency=2,
+            max_categories=64,
+            sparse_output=not dense_output,
+        )
     except TypeError:
-        encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse=not dense_output)
 
     cat_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
@@ -199,7 +210,11 @@ def _build_preprocessor(X: pd.DataFrame, scale: bool):
     if cat_cols:
         transformers.append(("cat", cat_pipe, cat_cols))
 
-    return ColumnTransformer(transformers=transformers, remainder="drop")
+    return ColumnTransformer(
+        transformers=transformers,
+        remainder="drop",
+        sparse_threshold=0.0 if dense_output else 1.0,
+    )
 
 
 def train_models(
@@ -250,16 +265,17 @@ def train_models(
     grids = CLASSIFICATION_GRIDS if task_type == "classification" else REGRESSION_GRIDS
     if task_type == "classification":
         train_min_class = int(y_train.value_counts().min())
-        effective_cv = max(2, min(cv_folds, train_min_class))
+        effective_cv = max(2, min(cv_folds, MAX_CV_FOLDS, train_min_class))
         cv = StratifiedKFold(n_splits=effective_cv, shuffle=True, random_state=42)
         scoring = "f1_weighted"
     else:
-        effective_cv = max(2, min(cv_folds, len(X_train)))
+        effective_cv = max(2, min(cv_folds, MAX_CV_FOLDS, len(X_train)))
         cv = KFold(n_splits=effective_cv, shuffle=True, random_state=42)
         scoring = "neg_root_mean_squared_error"
 
     results = []
     for model_name in model_names:
+        estimator = preprocessor = pipeline = search = best_estimator = None
         try:
             use_cw = (
                 imbalance_strategy == "class_weight"
@@ -270,7 +286,11 @@ def train_models(
                 class_weight="class_weight" if use_cw else None,
             )
             scale = model_name in NEEDS_SCALING
-            preprocessor = _build_preprocessor(X_train, scale)
+            preprocessor = _build_preprocessor(
+                X_train,
+                scale,
+                dense_output=model_name in DENSE_PREPROCESSING_MODELS,
+            )
 
             if smote_step is not None:
                 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -293,8 +313,10 @@ def train_models(
                 param_grid,
                 cv=cv,
                 scoring=scoring,
-                n_jobs=-1,
+                n_jobs=TRAIN_JOBS,
+                pre_dispatch=TRAIN_JOBS,
                 error_score="raise",
+                return_train_score=False,
             )
             search.fit(X_train, y_train)
             best_estimator = search.best_estimator_
@@ -309,6 +331,8 @@ def train_models(
                 "model_name": model_name,
                 "best_params": best_params,
                 "cv_score": round(float(cv_score), 4),
+                "cv_folds": effective_cv,
+                "training_rows": int(len(X_train)),
                 "used_smote": imbalance_strategy == "smote",
                 "used_class_weight": use_cw,
             }
@@ -347,6 +371,11 @@ def train_models(
                 "error": str(e),
                 "primary_score": -999,
             })
+        finally:
+            # Grid searches retain fitted candidates until their references are released.
+            # Collect between models so sequential searches remain inside hosted RAM limits.
+            best_estimator = search = pipeline = preprocessor = estimator = None
+            gc.collect()
 
     # Select best and generate explanation
     valid = [r for r in results if "error" not in r]
