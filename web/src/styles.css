@@ -87,6 +87,17 @@ h3,
   font-weight: 750;
 }
 
+.hero-script {
+  display: inline-block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.08em;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+  transform: rotate(-1deg);
+}
+
 @layer components {
   .ds-card {
     @apply rounded-2xl border shadow-soft;

@@ -45,8 +45,8 @@ export function StartPage() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
           <div className="mb-5 inline-flex rounded-full bg-[#EEF1EA] px-4 py-2 text-sm font-bold text-sage">AI-POWERED DATA ANALYSIS</div>
           <h1 className="max-w-4xl text-6xl font-extrabold leading-tight tracking-normal">
-            Data Analysis Made <span className="text-sage">Simple</span>,<br />
-            Insights Made <span className="text-sage">Clear</span>.
+            Data Analysis Made <span className="hero-script text-sage">Simple</span>,<br />
+            Insights Made <span className="hero-script text-sage">Clear</span>.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-300">
             Upload a CSV file and let DataStory AI clean your data, discover insights, train the best models, and generate a complete report.
@@ -71,7 +71,7 @@ export function StartPage() {
               event.target.value = "";
             }}
           />
-          <div className="mt-5 text-sm text-zinc-500">100% private • Your data stays on your device until you upload it to the local API.</div>
+          <div className="mt-5 text-sm text-zinc-500">100% private • Your data stays on your device until you upload it to the API.</div>
           {uploadMutation.error instanceof Error && <div className="mt-4 text-sm font-semibold text-red-600">{uploadMutation.error.message}</div>}
         </motion.div>
         <div className="relative h-[380px]">
