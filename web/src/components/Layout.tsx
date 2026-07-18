@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, CloudUpload, Database, FlaskConical, LineChart, MessageSquare, Moon, Sun, Trophy, Wand2 } from "lucide-react";
+import { ArrowRight, BarChart3, Bot, CloudUpload, Database, FlaskConical, LineChart, MessageSquare, Moon, Sun, Trophy, Wand2 } from "lucide-react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAppState } from "../lib/store";
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: "/explore", label: "EDA", description: "Discover insights", icon: LineChart },
   { to: "/models", label: "Modeling", description: "Train & tune", icon: FlaskConical },
   { to: "/results", label: "Results", description: "Compare models", icon: Trophy },
+  { to: "/agent", label: "Agent", description: "Ask dataset", icon: Bot },
   { to: "/report", label: "AI Report", description: "Generate report", icon: MessageSquare },
 ];
 
@@ -41,17 +42,17 @@ export function Layout() {
           </div>
         )}
       </header>
-      <main className="mx-auto max-w-[1500px] px-8 pb-40 pt-7">
+      <main className="mx-auto max-w-[1500px] px-8 pb-36 pt-7">
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-white/95 px-5 py-3 shadow-[0_-10px_30px_rgba(39,43,34,.08)] backdrop-blur dark:border-[#303844] dark:bg-[#0f1115]/94 dark:shadow-[0_-14px_34px_rgba(0,0,0,.34)]">
-        <div className="mx-auto grid max-w-[1500px] grid-cols-[repeat(13,auto)] items-center gap-1">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-white/95 px-3 py-3 shadow-[0_-10px_30px_rgba(39,43,34,.08)] backdrop-blur dark:border-[#303844] dark:bg-[#0f1115]/94 dark:shadow-[0_-14px_34px_rgba(0,0,0,.34)]">
+        <div className="mx-auto flex max-w-[1460px] items-center justify-between gap-1 overflow-hidden">
           {navItems.map((item, index) => (
-            <div key={item.to} className="contents">
+            <div key={item.to} className="flex min-w-0 flex-1 items-center">
               <NavLink
                 to={item.to}
                 className={({ isActive }) =>
-                  `group grid w-40 grid-cols-[44px_1fr] items-center gap-3 rounded-xl px-2 py-1.5 transition ${
+                  `group grid min-w-0 flex-1 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-xl px-1.5 py-1.5 transition ${
                     isActive ? "text-sage" : "text-zinc-500 hover:bg-stone-50 hover:text-ink dark:text-[#a7b0bc] dark:hover:bg-[#1d232c] dark:hover:text-zinc-100"
                   }`
                 }
@@ -59,10 +60,10 @@ export function Layout() {
                 {({ isActive }) => (
                   <>
                     <span
-                      className={`grid h-11 w-11 place-items-center rounded-full border transition ${
+                      className={`grid h-10 w-10 place-items-center rounded-full border transition ${
                         isActive
                           ? "border-sage bg-sage text-white dark:text-[#11151a]"
-                          : "border-line bg-[#F0F1EC] text-zinc-500 group-hover:text-sage dark:border-[#303844] dark:bg-[#171b22]"
+                          : "border-line bg-[#F0F1EC] text-zinc-500 group-hover:text-sage dark:border-[#394735] dark:bg-[#182118]"
                       }`}
                     >
                       <item.icon className="h-5 w-5" />
@@ -77,9 +78,9 @@ export function Layout() {
                 )}
               </NavLink>
               {index < navItems.length - 1 && (
-                <div className="relative h-12 w-11" aria-hidden="true">
+                <div className="relative h-12 w-5 shrink-0" aria-hidden="true">
                   <div className="absolute left-0 right-1 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-sage/20 via-sage/80 to-sage shadow-[0_0_14px_rgba(111,133,84,.75)]" />
-                  <div className="absolute right-0 top-1/2 h-6 w-8 -translate-y-1/2 rounded-full bg-sage/20 blur-md" />
+                  <div className="absolute right-0 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-sage/20 blur-md" />
                   <ArrowRight className="absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-sage drop-shadow-[0_0_7px_rgba(111,133,84,.9)]" strokeWidth={2.5} />
                 </div>
               )}

@@ -8,6 +8,7 @@ import { ExplorePage } from "./pages/ExplorePage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { ReportPage } from "./pages/ReportPage";
+import { AgentPage } from "./pages/AgentPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/results" element={<ResultsPage />} />
+          <Route path="/agent" element={<AgentPage />} />
           <Route path="/report" element={<ReportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

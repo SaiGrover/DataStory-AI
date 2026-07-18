@@ -68,6 +68,25 @@ SAMPLE_DATASETS = {
     "linnerud": {"name": "Linnerud", "path": "data/sample_datasets/linnerud.csv", "description": "Classic fitness regression"},
 }
 
+
+def _density_curve(series: pd.Series) -> dict:
+    """Small dependency-free Gaussian KDE approximation for frontend plots."""
+    values = series.dropna().astype(float)
+    if len(values) < 3:
+        return {"x": [], "y": []}
+    std = float(values.std(ddof=1) or 0)
+    if std == 0:
+        return {"x": [round(float(values.iloc[0]), 4)], "y": [1.0]}
+    x_min, x_max = float(values.min()), float(values.max())
+    xs = np.linspace(x_min, x_max, 80)
+    bandwidth = max(1.06 * std * (len(values) ** (-1 / 5)), std * 0.05)
+    diffs = (xs[:, None] - values.to_numpy()[None, :]) / bandwidth
+    ys = np.exp(-0.5 * diffs**2).sum(axis=1) / (len(values) * bandwidth * np.sqrt(2 * np.pi))
+    return {
+        "x": [round(float(x), 4) for x in xs.tolist()],
+        "y": [round(float(y), 6) for y in ys.tolist()],
+    }
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -212,6 +231,8 @@ def get_eda(dataset_id: str):
         numeric_profiles.append({
             "column": col,
             "histogram": {"bins": [round(float(x), 4) for x in bins.tolist()], "counts": counts.astype(int).tolist()},
+            "values": [round(float(x), 4) for x in series.sample(min(len(series), 500), random_state=42).tolist()],
+            "kde": _density_curve(series),
             "box": {
                 "min": round(float(series.min()), 4),
                 "q1": round(float(q1), 4),
@@ -219,6 +240,12 @@ def get_eda(dataset_id: str):
                 "q3": round(float(q3), 4),
                 "max": round(float(series.max()), 4),
                 "outliers": int(((series < lower) | (series > upper)).sum()),
+            },
+            "stats": {
+                "mean": round(float(series.mean()), 4),
+                "std": round(float(series.std()), 4) if len(series) > 1 else 0.0,
+                "skew": round(float(series.skew()), 4) if len(series) > 2 else 0.0,
+                "missing": int(df[col].isna().sum()),
             },
         })
     categorical_profiles = []
@@ -309,7 +336,7 @@ def chat(dataset_id: str, body: ChatRequest):
     df = _get_df(dataset_id, prefer_cleaned=True)
     results = _results_store.get(dataset_id)
     best = max(results, key=lambda r: r.get("primary_score", -999)) if results else None
-    answer = chat_with_dataset(
+    response = chat_with_dataset(
         question=body.question,
         df=df,
         profile=profile_dataset(df),
@@ -318,8 +345,9 @@ def chat(dataset_id: str, body: ChatRequest):
         task=body.task_type,
         target=body.target,
         cleaning_actions=body.cleaning_actions or [],
+        history=body.history or [],
     )
-    return {"answer": answer}
+    return response
 
 
 @app.post("/report/{dataset_id}")

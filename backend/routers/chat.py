@@ -56,7 +56,7 @@ async def chat_with_dataset(
             "best_params": model.best_params,
         })
 
-    answer = answer_with_dataset(
+    agent_result = answer_with_dataset(
         question=request.question,
         df=df,
         profile=profile,
@@ -79,7 +79,7 @@ async def chat_with_dataset(
         id=str(uuid.uuid4()),
         dataset_id=dataset_id,
         role="assistant",
-        content=answer,
+        content=agent_result["answer"],
         created_at=datetime.utcnow(),
     )
     db.add(user_msg)
@@ -89,8 +89,8 @@ async def chat_with_dataset(
     return ChatResponse(
         dataset_id=dataset_id,
         question=request.question,
-        answer=answer,
-        sources=[],
+        answer=agent_result["answer"],
+        sources=agent_result["sources"],
     )
 
 

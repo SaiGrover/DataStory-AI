@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     target: Optional[str] = None
     task_type: Optional[str] = None
     cleaning_actions: Optional[List[str]] = None
+    history: Optional[List[Dict[str, str]]] = None
 
 
 class ReportRequest(BaseModel):

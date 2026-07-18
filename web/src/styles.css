@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --ds-bg: #fafaf7;
+  --ds-bg: #fbfbf5;
   --ds-surface: #ffffff;
-  --ds-surface-soft: #f3f4ef;
+  --ds-surface-soft: #f4f7ef;
   --ds-surface-raised: #ffffff;
-  --ds-border: #e8e2d7;
-  --ds-text: #15191c;
-  --ds-muted: #667075;
-  --ds-muted-strong: #3f484d;
-  --ds-accent: #71895b;
-  --ds-accent-bright: #8ca66f;
+  --ds-border: #e1e8d8;
+  --ds-text: #172018;
+  --ds-muted: #697468;
+  --ds-muted-strong: #39463a;
+  --ds-accent: #667f4d;
+  --ds-accent-bright: #93ad74;
   color: #15191c;
   background: var(--ds-bg);
   font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
@@ -32,32 +32,34 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at 18% 0%, rgba(113, 137, 91, .08), transparent 32rem),
+    radial-gradient(circle at 12% -10%, rgba(136, 164, 103, .18), transparent 34rem),
+    radial-gradient(circle at 90% 2%, rgba(214, 229, 198, .55), transparent 28rem),
+    linear-gradient(180deg, #fbfbf5 0%, #f5f8ef 100%),
     var(--ds-bg);
   color: var(--ds-text);
 }
 
 .dark body,
 .dark {
-  --ds-bg: #0f1115;
-  --ds-surface: #171b22;
-  --ds-surface-soft: #1d232c;
-  --ds-surface-raised: #202733;
-  --ds-border: #303844;
-  --ds-text: #edf1f5;
-  --ds-muted: #a7b0bc;
-  --ds-muted-strong: #c8d0da;
-  --ds-accent: #9fbd78;
-  --ds-accent-bright: #bad58f;
-  background: #0f1115;
+  --ds-bg: #101611;
+  --ds-surface: #182118;
+  --ds-surface-soft: #202a1f;
+  --ds-surface-raised: #263224;
+  --ds-border: #394735;
+  --ds-text: #f2f5ee;
+  --ds-muted: #a9b7a3;
+  --ds-muted-strong: #d3dccf;
+  --ds-accent: #b6d38b;
+  --ds-accent-bright: #d4efaa;
+  background: #101611;
   color: var(--ds-text);
 }
 
 .dark body {
   background:
-    radial-gradient(circle at 16% -8%, rgba(159, 189, 120, .13), transparent 30rem),
-    radial-gradient(circle at 88% 8%, rgba(95, 128, 160, .1), transparent 28rem),
-    #0f1115;
+    radial-gradient(circle at 15% -8%, rgba(182, 211, 139, .18), transparent 32rem),
+    radial-gradient(circle at 86% 3%, rgba(85, 119, 74, .22), transparent 30rem),
+    linear-gradient(180deg, #101611 0%, #121912 54%, #0f1511 100%);
 }
 
 ::selection {
@@ -73,6 +75,8 @@ h2,
 h3,
 .font-black {
   letter-spacing: 0;
+  color: var(--ds-text);
+  font-family: "Segoe UI Display", Inter, "Segoe UI Variable Display", system-ui, sans-serif;
 }
 
 .font-black {
@@ -85,15 +89,18 @@ h3,
 
 @layer components {
   .ds-card {
-    @apply rounded-xl border shadow-soft;
+    @apply rounded-2xl border shadow-soft;
     border-color: var(--ds-border);
-    background: color-mix(in srgb, var(--ds-surface) 96%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--ds-surface) 98%, transparent), color-mix(in srgb, var(--ds-surface-soft) 42%, var(--ds-surface)));
+    box-shadow: 0 22px 58px rgba(57, 70, 50, .09);
   }
 
   .dark .ds-card {
     border-color: var(--ds-border);
-    background: linear-gradient(180deg, rgba(32, 39, 51, .82), rgba(23, 27, 34, .96));
-    box-shadow: 0 18px 52px rgba(0, 0, 0, .30);
+    background:
+      linear-gradient(180deg, rgba(38, 50, 36, .78), rgba(24, 33, 24, .96));
+    box-shadow: 0 22px 60px rgba(0, 0, 0, .34);
   }
 
   .ds-button {
@@ -101,13 +108,13 @@ h3,
   }
 
   .ds-button-primary {
-    @apply ds-button bg-gradient-to-b from-moss to-sage text-white shadow-lg shadow-sage/15 hover:brightness-105;
+    @apply ds-button bg-gradient-to-b from-moss to-sage text-white shadow-lg shadow-sage/20 hover:brightness-105;
   }
 
   .dark .ds-button-primary {
-    background: linear-gradient(180deg, #bad58f 0%, #91ad6e 100%);
-    color: #11151a;
-    box-shadow: 0 14px 30px rgba(159, 189, 120, .20);
+    background: linear-gradient(180deg, #d4efaa 0%, #a9c982 100%);
+    color: #101611;
+    box-shadow: 0 16px 34px rgba(182, 211, 139, .22);
   }
 
   .ds-button-secondary {
@@ -116,12 +123,12 @@ h3,
 
   .dark .ds-button-secondary {
     border-color: var(--ds-border);
-    background: #1b212a;
+    background: #202a1f;
     color: var(--ds-text);
   }
 
   .dark .ds-button-secondary:hover {
-    background: #242c38;
+    background: #2a3728;
   }
 }
 
@@ -215,7 +222,7 @@ h3,
 .dark textarea {
   color-scheme: dark;
   border-color: var(--ds-border);
-  background-color: #151a21;
+  background-color: #151d16;
   color: var(--ds-text);
 }
 

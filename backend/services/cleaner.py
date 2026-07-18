@@ -46,12 +46,14 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
     actions = []
     preview_df = df.copy()
 
-    if config.get("remove_dups"):
+    duplicate_subset = [c for c in config.get("duplicate_key_columns", []) if c in preview_df.columns]
+    if config.get("remove_dups") or duplicate_subset:
         n_before = len(preview_df)
-        preview_df = preview_df.drop_duplicates()
+        preview_df = preview_df.drop_duplicates(subset=duplicate_subset or None)
         removed = n_before - len(preview_df)
         if removed > 0:
-            actions.append(f"Remove {removed:,} duplicate rows")
+            scope = f" using {len(duplicate_subset)} key column(s)" if duplicate_subset else ""
+            actions.append(f"Remove {removed:,} duplicate rows{scope}")
 
     if config.get("drop_empty_rows"):
         n_before = len(preview_df)
@@ -72,10 +74,12 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
             actions.append(f"Drop {len(duplicate_cols)} duplicate column(s): {', '.join(duplicate_cols[:3])}")
 
     if config.get("drop_high_missing"):
-        high = [c for c in preview_df.columns if preview_df[c].isnull().mean() > 0.5]
+        threshold = float(config.get("drop_missing_threshold", 0.5))
+        threshold = min(max(threshold, 0), 1)
+        high = [c for c in preview_df.columns if preview_df[c].isnull().mean() > threshold]
         if high:
             preview_df = preview_df.drop(columns=high)
-            actions.append(f"Drop {len(high)} column(s) with >50% missing: {', '.join(high[:3])}")
+            actions.append(f"Drop {len(high)} column(s) with >{int(threshold * 100)}% missing: {', '.join(high[:3])}")
 
     if config.get("remove_constant"):
         const = [c for c in preview_df.columns if preview_df[c].nunique() <= 1]
@@ -88,6 +92,10 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
     if selected_num_cols:
         num_cols = selected_num_cols
     cat_cols = preview_df.select_dtypes(include=["object", "category"]).columns.tolist()
+    selected_cat_cols = [c for c in config.get("categorical_columns", []) if c in cat_cols]
+    fill_cat_cols = selected_cat_cols or cat_cols
+    text_cols = [c for c in config.get("text_columns", []) if c in cat_cols] or cat_cols
+    outlier_cols = [c for c in config.get("outlier_columns", []) if c in num_cols] or num_cols
 
     fill_strategy = config.get("numeric_fill", "None")
     if fill_strategy == "Mean" and num_cols:
@@ -101,26 +109,26 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
         actions.append(f"Fill numeric missing values with {config['custom_num_val']}")
 
     cat_strategy = config.get("cat_fill", "None")
-    if cat_strategy == "Mode" and cat_cols:
-        for col in cat_cols:
+    if cat_strategy == "Mode" and fill_cat_cols:
+        for col in fill_cat_cols:
             if preview_df[col].isnull().any():
                 mode_val = preview_df[col].mode()
                 if len(mode_val) > 0:
                     preview_df[col] = preview_df[col].fillna(mode_val.iloc[0])
-        actions.append(f"Fill categorical missing values with mode ({len(cat_cols)} cols)")
-    elif cat_strategy == "Custom value" and config.get("custom_cat_val"):
-        preview_df[cat_cols] = preview_df[cat_cols].fillna(config["custom_cat_val"])
+        actions.append(f"Fill categorical missing values with mode ({len(fill_cat_cols)} cols)")
+    elif cat_strategy == "Custom value" and config.get("custom_cat_val") and fill_cat_cols:
+        preview_df[fill_cat_cols] = preview_df[fill_cat_cols].fillna(config["custom_cat_val"])
         actions.append(f"Fill categorical missing values with '{config['custom_cat_val']}'")
 
-    if config.get("strip_whitespace") and cat_cols:
-        for col in cat_cols:
+    if config.get("strip_whitespace") and text_cols:
+        for col in text_cols:
             if preview_df[col].dtype == object:
                 preview_df[col] = preview_df[col].str.strip()
-        actions.append("Strip whitespace from text columns")
+        actions.append(f"Strip whitespace from text columns ({len(text_cols)} cols)")
 
     text_case = config.get("text_case", "Keep as-is")
-    if text_case != "Keep as-is" and cat_cols:
-        for col in cat_cols:
+    if text_case != "Keep as-is" and text_cols:
+        for col in text_cols:
             if preview_df[col].dtype == object:
                 if text_case == "Lowercase":
                     preview_df[col] = preview_df[col].str.lower()
@@ -128,11 +136,13 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
                     preview_df[col] = preview_df[col].str.upper()
                 elif text_case == "Title Case":
                     preview_df[col] = preview_df[col].str.title()
-        actions.append(f"Normalize text case to {text_case.lower()}")
+        actions.append(f"Normalize text case to {text_case.lower()} ({len(text_cols)} cols)")
 
-    if config.get("coerce_numeric_text") and cat_cols:
+    type_cols = [c for c in config.get("type_columns", []) if c in preview_df.columns]
+    coerce_cols = [c for c in (type_cols or cat_cols) if c in preview_df.columns]
+    if config.get("coerce_numeric_text") and coerce_cols:
         converted = []
-        for col in cat_cols:
+        for col in coerce_cols:
             cleaned = preview_df[col].astype(str).str.replace(",", "", regex=False).str.strip()
             parsed = pd.to_numeric(cleaned, errors="coerce")
             if parsed.notna().mean() >= 0.8:
@@ -141,9 +151,11 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
         if converted:
             actions.append(f"Convert numeric-looking text to numbers: {', '.join(converted[:5])}")
 
-    if config.get("convert_dates") and cat_cols:
+    date_cols = [c for c in config.get("date_columns", []) if c in preview_df.columns]
+    convert_date_cols = [c for c in (date_cols or cat_cols) if c in preview_df.columns]
+    if config.get("convert_dates") and convert_date_cols:
         converted_dates = []
-        for col in cat_cols:
+        for col in convert_date_cols:
             try:
                 parsed = pd.to_datetime(preview_df[col], errors="coerce")
                 if parsed.notna().mean() > 0.7:
@@ -156,14 +168,14 @@ def preview_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]
 
     outlier_action = config.get("outlier_action", "None")
     if outlier_action.startswith("Cap at IQR bounds"):
-        for col in num_cols:
+        for col in outlier_cols:
             q1, q3 = preview_df[col].quantile([0.25, 0.75])
             iqr = q3 - q1
             preview_df[col] = preview_df[col].clip(q1 - 1.5 * iqr, q3 + 1.5 * iqr)
-        actions.append(f"Cap outliers at IQR bounds (1.5x) for {len(num_cols)} numeric columns")
+        actions.append(f"Cap outliers at IQR bounds (1.5x) for {len(outlier_cols)} numeric columns")
     elif outlier_action == "Remove outlier rows":
         mask = pd.Series([True] * len(preview_df))
-        for col in num_cols:
+        for col in outlier_cols:
             q1, q3 = preview_df[col].quantile([0.25, 0.75])
             iqr = q3 - q1
             mask &= (preview_df[col] >= q1 - 1.5 * iqr) & (preview_df[col] <= q3 + 1.5 * iqr)
@@ -190,8 +202,9 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
 
     df = df.copy()
 
-    if config.get("remove_dups"):
-        df = df.drop_duplicates()
+    duplicate_subset = [c for c in config.get("duplicate_key_columns", []) if c in df.columns]
+    if config.get("remove_dups") or duplicate_subset:
+        df = df.drop_duplicates(subset=duplicate_subset or None)
 
     if config.get("drop_empty_rows"):
         df = df.dropna(how="all")
@@ -206,7 +219,9 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
             df = df.drop(columns=duplicate_cols)
 
     if config.get("drop_high_missing"):
-        high = [c for c in df.columns if df[c].isnull().mean() > 0.5]
+        threshold = float(config.get("drop_missing_threshold", 0.5))
+        threshold = min(max(threshold, 0), 1)
+        high = [c for c in df.columns if df[c].isnull().mean() > threshold]
         if high:
             df = df.drop(columns=high)
 
@@ -220,6 +235,9 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
     if selected_num_cols:
         num_cols = selected_num_cols
     cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    selected_cat_cols = [c for c in config.get("categorical_columns", []) if c in cat_cols]
+    fill_cat_cols = selected_cat_cols or cat_cols
+    text_cols = [c for c in config.get("text_columns", []) if c in cat_cols] or cat_cols
 
     fill_strategy = config.get("numeric_fill", "None")
     if fill_strategy == "Mean" and num_cols:
@@ -230,23 +248,23 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
         df[num_cols] = df[num_cols].fillna(config["custom_num_val"])
 
     cat_strategy = config.get("cat_fill", "None")
-    if cat_strategy == "Mode" and cat_cols:
-        for col in cat_cols:
+    if cat_strategy == "Mode" and fill_cat_cols:
+        for col in fill_cat_cols:
             if df[col].isnull().any():
                 mode_val = df[col].mode()
                 if len(mode_val) > 0:
                     df[col] = df[col].fillna(mode_val.iloc[0])
-    elif cat_strategy == "Custom value" and config.get("custom_cat_val"):
-        df[cat_cols] = df[cat_cols].fillna(config["custom_cat_val"])
+    elif cat_strategy == "Custom value" and config.get("custom_cat_val") and fill_cat_cols:
+        df[fill_cat_cols] = df[fill_cat_cols].fillna(config["custom_cat_val"])
 
-    if config.get("strip_whitespace") and cat_cols:
-        for col in cat_cols:
+    if config.get("strip_whitespace") and text_cols:
+        for col in text_cols:
             if df[col].dtype == object:
                 df[col] = df[col].str.strip()
 
     text_case = config.get("text_case", "Keep as-is")
-    if text_case != "Keep as-is" and cat_cols:
-        for col in cat_cols:
+    if text_case != "Keep as-is" and text_cols:
+        for col in text_cols:
             if df[col].dtype == object:
                 if text_case == "Lowercase":
                     df[col] = df[col].str.lower()
@@ -255,15 +273,19 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
                 elif text_case == "Title Case":
                     df[col] = df[col].str.title()
 
-    if config.get("coerce_numeric_text") and cat_cols:
-        for col in cat_cols:
+    type_cols = [c for c in config.get("type_columns", []) if c in df.columns]
+    coerce_cols = [c for c in (type_cols or cat_cols) if c in df.columns]
+    if config.get("coerce_numeric_text") and coerce_cols:
+        for col in coerce_cols:
             cleaned = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
             parsed = pd.to_numeric(cleaned, errors="coerce")
             if parsed.notna().mean() >= 0.8:
                 df[col] = parsed
 
     if config.get("convert_dates"):
-        for col in cat_cols:
+        date_cols = [c for c in config.get("date_columns", []) if c in df.columns]
+        convert_date_cols = [c for c in (date_cols or cat_cols) if c in df.columns]
+        for col in convert_date_cols:
             try:
                 parsed = pd.to_datetime(df[col], infer_datetime_format=True, errors="coerce")
                 if parsed.notna().mean() > 0.7:
@@ -273,6 +295,9 @@ def apply_cleaning(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
 
     outlier_action = config.get("outlier_action", "None")
     num_cols_current = df.select_dtypes(include="number").columns.tolist()
+    selected_outlier_cols = [c for c in config.get("outlier_columns", []) if c in num_cols_current]
+    if selected_outlier_cols:
+        num_cols_current = selected_outlier_cols
     if outlier_action.startswith("Cap at IQR bounds"):
         for col in num_cols_current:
             q1, q3 = df[col].quantile([0.25, 0.75])

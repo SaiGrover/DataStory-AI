@@ -1,89 +1,74 @@
-"""
-DataStory AI — Simple keyword-based RAG retriever.
-Falls back to FAISS vector search when available.
-"""
+"""Small, dependency-free retriever for DataStory's method knowledge base."""
+
+import math
 import re
-from typing import List, Optional
+from collections import Counter
+from typing import Dict, List
+
 from backend.rag.knowledge_base import DOCUMENTS
 
 
-def _keyword_score(query: str, doc: dict) -> float:
-    """Score a document by keyword overlap with the query."""
-    query_tokens = set(re.findall(r"\w+", query.lower()))
-    content_tokens = set(re.findall(r"\w+", (doc["title"] + " " + doc["content"]).lower()))
-    overlap = query_tokens & content_tokens
-    return len(overlap) / max(len(query_tokens), 1)
+STOP_WORDS = {
+    "a", "about", "and", "are", "do", "does", "for", "from", "have", "how",
+    "column", "data", "dataset", "describe", "explain", "i", "in", "is", "it", "me",
+    "my", "of", "on", "or", "should", "tell", "the", "this", "to", "what", "when",
+    "which", "with", "would", "you",
+}
+
+
+def _tokens(text: str) -> List[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if token not in STOP_WORDS]
+
+
+def _document_frequencies() -> Counter:
+    frequencies: Counter = Counter()
+    for document in DOCUMENTS:
+        frequencies.update(set(_tokens(f"{document['title']} {document['content']}")))
+    return frequencies
+
+
+DOCUMENT_FREQUENCIES = _document_frequencies()
+
+
+def _keyword_score(query: str, document: Dict) -> float:
+    """Weighted lexical score with title and exact-phrase boosts."""
+    query_tokens = _tokens(query)
+    if not query_tokens:
+        return 0.0
+
+    title = document["title"].lower()
+    content = document["content"].lower()
+    doc_counts = Counter(_tokens(f"{title} {content}"))
+    score = 0.0
+    for token in set(query_tokens):
+        if token not in doc_counts:
+            continue
+        rarity = math.log((len(DOCUMENTS) + 1) / (DOCUMENT_FREQUENCIES[token] + 1)) + 1
+        score += rarity * (2.3 if token in _tokens(title) else 1.0)
+
+    query_phrase = " ".join(query_tokens)
+    if len(query_tokens) > 1 and query_phrase in f"{title} {content}":
+        score += 3.0
+    return score / math.sqrt(max(len(set(query_tokens)), 1))
+
+
+def retrieve_documents(query: str, top_k: int = 3, min_score: float = 0.65) -> List[Dict]:
+    """Return ranked knowledge documents with transparent relevance scores."""
+    if not query.strip():
+        return []
+    ranked = [
+        {**document, "score": round(_keyword_score(query, document), 3)}
+        for document in DOCUMENTS
+    ]
+    ranked.sort(key=lambda document: document["score"], reverse=True)
+    return [document for document in ranked[:top_k] if document["score"] >= min_score]
 
 
 def retrieve_context(query: str, top_k: int = 3) -> str:
-    """
-    Retrieve top-k relevant documents from the knowledge base.
-    Returns them as a single formatted string for use as RAG context.
-    """
-    if not query.strip():
-        return ""
-
-    # Try FAISS first (optional, degrades gracefully)
-    try:
-        return _faiss_retrieve(query, top_k)
-    except Exception:
-        pass
-
-    # Fallback: keyword matching
-    scored = [(doc, _keyword_score(query, doc)) for doc in DOCUMENTS]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    top_docs = [d for d, score in scored[:top_k] if score > 0]
-
-    if not top_docs:
-        return ""
-
-    parts = []
-    for doc in top_docs:
-        parts.append(f"[{doc['title']}]\n{doc['content']}")
-    return "\n\n".join(parts)
-
-
-def _faiss_retrieve(query: str, top_k: int) -> str:
-    """FAISS-based retrieval (requires faiss-cpu and sentence-transformers)."""
-    import faiss
-    import numpy as np
-    from sentence_transformers import SentenceTransformer
-
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    corpus = [d["title"] + ". " + d["content"] for d in DOCUMENTS]
-    corpus_emb = model.encode(corpus, convert_to_numpy=True)
-
-    dim = corpus_emb.shape[1]
-    index = faiss.IndexFlatL2(dim)
-    index.add(corpus_emb.astype("float32"))
-
-    query_emb = model.encode([query], convert_to_numpy=True).astype("float32")
-    distances, indices = index.search(query_emb, top_k)
-
-    parts = []
-    for idx in indices[0]:
-        if idx < len(DOCUMENTS):
-            doc = DOCUMENTS[idx]
-            parts.append(f"[{doc['title']}]\n{doc['content']}")
-    return "\n\n".join(parts)
+    documents = retrieve_documents(query, top_k=top_k)
+    return "\n\n".join(f"[{doc['title']}]\n{doc['content']}" for doc in documents)
 
 
 def build_faiss_index():
-    """Pre-build and cache FAISS index (optional setup step)."""
-    try:
-        import faiss
-        import numpy as np
-        from sentence_transformers import SentenceTransformer
-
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        corpus = [d["title"] + ". " + d["content"] for d in DOCUMENTS]
-        embeddings = model.encode(corpus, convert_to_numpy=True).astype("float32")
-
-        dim = embeddings.shape[1]
-        index = faiss.IndexFlatL2(dim)
-        index.add(embeddings)
-
-        faiss.write_index(index, "datastory_rag.index")
-        print(f"FAISS index built with {len(DOCUMENTS)} documents.")
-    except ImportError:
-        print("FAISS or sentence-transformers not installed. Keyword fallback will be used.")
+    """Retained for CLI compatibility; live retrieval intentionally stays local and fast."""
+    print("DataStory uses its deterministic weighted knowledge retriever; no index build is required.")

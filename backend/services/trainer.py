@@ -61,7 +61,9 @@ CLASSIFICATION_GRIDS = {
         "clf__weights": ["uniform", "distance"],
         "clf__metric": ["euclidean", "manhattan"],
     },
-    "Naive Bayes": {},
+    "Naive Bayes": {
+        "clf__var_smoothing": [1e-9, 1e-8, 1e-7, 1e-6],
+    },
     "Gradient Boosting Classifier": {
         "clf__n_estimators": [50, 100],
         "clf__learning_rate": [0.05, 0.1],
@@ -75,7 +77,9 @@ CLASSIFICATION_GRIDS = {
 }
 
 REGRESSION_GRIDS = {
-    "Linear Regression": {},
+    "Linear Regression": {
+        "clf__fit_intercept": [True, False],
+    },
     "Ridge Regression": {
         "clf__alpha": [0.01, 0.1, 1.0, 10.0, 100.0],
     },
@@ -231,21 +235,13 @@ def train_models(
         stratify=stratify,
     )
 
-    # Apply SMOTE if selected
+    smote_step = None
     if imbalance_strategy == "smote" and task_type == "classification":
         try:
             from imblearn.over_sampling import SMOTE
-            num_cols = X_train.select_dtypes(include="number").columns.tolist()
-            cat_cols = X_train.select_dtypes(exclude="number").columns.tolist()
-
-            # Encode categoricals temporarily for SMOTE
-            X_train_enc = X_train[num_cols].fillna(X_train[num_cols].median())
-            min_class_count = y_train.value_counts().min()
-            k = min(5, min_class_count - 1)
-            if k >= 1:
-                sm = SMOTE(random_state=42, k_neighbors=k)
-                X_train_enc, y_train = sm.fit_resample(X_train_enc, y_train)
-                X_train = pd.DataFrame(X_train_enc, columns=num_cols)
+            min_train_class = int(y_train.value_counts().min())
+            if min_train_class >= 2:
+                smote_step = SMOTE(random_state=42, k_neighbors=min(5, min_train_class - 1))
             else:
                 imbalance_strategy = "class_weight"
         except ImportError:
@@ -276,33 +272,37 @@ def train_models(
             scale = model_name in NEEDS_SCALING
             preprocessor = _build_preprocessor(X_train, scale)
 
-            pipeline = Pipeline([
-                ("preprocessor", preprocessor),
-                ("clf", estimator),
-            ])
-
-            param_grid = grids.get(model_name, {})
-            if param_grid:
-                search = GridSearchCV(
-                    pipeline,
-                    param_grid,
-                    cv=cv,
-                    scoring=scoring,
-                    n_jobs=-1,
-                    error_score="raise",
-                )
-                search.fit(X_train, y_train)
-                best_estimator = search.best_estimator_
-                best_params = {
-                    k.replace("clf__", ""): v
-                    for k, v in search.best_params_.items()
-                }
-                cv_score = abs(search.best_score_)
+            if smote_step is not None:
+                from imblearn.pipeline import Pipeline as ImbPipeline
+                pipeline = ImbPipeline([
+                    ("preprocessor", preprocessor),
+                    ("smote", smote_step),
+                    ("clf", estimator),
+                ])
             else:
-                pipeline.fit(X_train, y_train)
-                best_estimator = pipeline
-                best_params = {}
-                cv_score = 0.0
+                pipeline = Pipeline([
+                    ("preprocessor", preprocessor),
+                    ("clf", estimator),
+                ])
+
+            param_grid = grids.get(model_name)
+            if not param_grid:
+                raise ValueError(f"No hyperparameter grid configured for {model_name}.")
+            search = GridSearchCV(
+                pipeline,
+                param_grid,
+                cv=cv,
+                scoring=scoring,
+                n_jobs=-1,
+                error_score="raise",
+            )
+            search.fit(X_train, y_train)
+            best_estimator = search.best_estimator_
+            best_params = {
+                k.replace("clf__", ""): v
+                for k, v in search.best_params_.items()
+            }
+            cv_score = abs(search.best_score_)
 
             y_pred = best_estimator.predict(X_test)
             result: Dict[str, Any] = {

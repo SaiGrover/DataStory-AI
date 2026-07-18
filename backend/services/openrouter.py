@@ -1,10 +1,16 @@
 import os
 import requests
+from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+
+# Load the server-side project .env for local development. Never expose this key to Vite.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "mistralai/mistral-7b-instruct"
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct")
 
 
 def _call_openrouter(messages: list, max_tokens: int = 800) -> str:
@@ -82,10 +88,11 @@ def generate_report_section(prompt: str, style: str = "Beginner Friendly") -> st
 def answer_question(question: str, context: str) -> str:
     """Answer a user question about the dataset using OpenRouter + RAG context."""
     system = (
-        "You are DataStory AI, a helpful data analyst assistant. "
-        "Answer questions about the user's dataset, analysis, and models clearly. "
-        "Be concise, friendly, and beginner-appropriate. "
-        "If you don't know something, say so honestly."
+        "You are DataStory AI, a precise dataset analyst. Use only facts in VERIFIED DATASET "
+        "EVIDENCE for claims about this dataset. METHOD KNOWLEDGE may explain concepts but is not "
+        "evidence about the uploaded data. Never invent column values, model scores, causes, or trends. "
+        "If the evidence is insufficient, say exactly what is missing. Answer the question directly, "
+        "then give 2-5 short evidence bullets and one practical next step. Be concise and accessible."
     )
     messages = [
         {"role": "system", "content": system},

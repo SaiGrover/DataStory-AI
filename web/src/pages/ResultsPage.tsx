@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { downloadTextFile } from "../lib/browserActions";
+import { markdownBarChart } from "../lib/markdownCharts";
 import { useAppState } from "../lib/store";
 import type { TrainResult } from "../lib/types";
 
@@ -82,7 +83,7 @@ export function ResultsPage() {
               <MiniStat label={metricLabel(taskType)} value={best ? formatPrimary(best, taskType) : "-"} />
               <MiniStat label="Models Trained" value={validResults.length.toString()} />
             </div>
-            <button className="ds-button-secondary mt-5 w-full" onClick={() => exportLeaderboard(dataset?.filename ?? "dataset", rankedResults)}>
+            <button className="ds-button-secondary mt-5 w-full" onClick={() => exportLeaderboard(dataset?.filename ?? "dataset", target, taskType, rankedResults)}>
               <Download className="h-4 w-4" />
               Export Results
             </button>
@@ -248,14 +249,49 @@ function defaultReason(row: TrainResult, taskType: string) {
   return `${displayModel(row.model_name)} has the highest weighted F1 among the successful trained models.`;
 }
 
-function exportLeaderboard(filename: string, results: TrainResult[]) {
+function exportLeaderboard(filename: string, target: string, taskType: string, results: TrainResult[]) {
   const lines = [
-    `DataStory AI Leaderboard - ${filename}`,
-    `Generated: ${new Date().toLocaleString()}`,
+    `# DataStory AI Model Results - ${filename}`,
     "",
-    ...results.map((row, index) => `${index + 1}. ${row.model_name}: primary=${row.primary_score ?? "-"} f1=${row.f1 ?? "-"} accuracy=${row.accuracy ?? "-"} rmse=${row.rmse ?? "-"}`),
+    `**Generated:** ${new Date().toLocaleString()}`,
+    `**Target:** ${target || "Not selected"}`,
+    `**Task:** ${capitalize(taskType || "Not detected")}`,
+    `**Primary metric:** ${metricLabel(taskType)}`,
+    "",
+    "## Leaderboard",
+    "",
+    ...(taskType === "regression"
+      ? [
+          "| Rank | Model | RMSE | MAE | R2 | CV score |",
+          "| ---: | --- | ---: | ---: | ---: | ---: |",
+          ...results.map((row, index) => `| ${index + 1} | ${displayModel(row.model_name)} | ${formatValue(row.rmse)} | ${formatValue(row.mae)} | ${formatValue(row.r2)} | ${formatValue(row.cv_score)} |`),
+        ]
+      : [
+          "| Rank | Model | Weighted F1 | Accuracy | Precision | Recall | ROC-AUC |",
+          "| ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+          ...results.map((row, index) => `| ${index + 1} | ${displayModel(row.model_name)} | ${formatValue(row.f1 ?? row.primary_score)} | ${formatValue(row.accuracy)} | ${formatValue(row.precision)} | ${formatValue(row.recall)} | ${formatValue(row.roc_auc)} |`),
+        ]),
+    "",
+    "## Interpretation",
+    results.length ? `- ${displayModel(results[0].model_name)} is the current leader under ${metricLabel(taskType)}.` : "- No successful model results are available.",
+    `- ${taskType === "regression" ? "Lower RMSE is better; compare it with MAE and R2." : "Higher weighted F1 is better; inspect precision and recall before choosing a final model."}`,
+    "- Keep the same validation setup when comparing future runs.",
+    "",
+    "## Generated Chart",
+    "",
+    markdownBarChart(
+      taskType === "regression" ? "Model RMSE Comparison" : "Model Weighted F1 Comparison",
+      results.map((row) => displayModel(row.model_name)),
+      results.map((row) => Number(taskType === "regression" ? row.rmse : row.f1 ?? row.primary_score ?? 0)),
+      metricLabel(taskType),
+    ),
   ];
-  downloadTextFile(`${filename.replace(/\W+/g, "_")}_leaderboard.txt`, lines.join("\n"));
+  const base = filename.replace(/\.csv$/i, "").replace(/[^a-z0-9_-]+/gi, "_") || "dataset";
+  downloadTextFile(`${base}_model_results.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+}
+
+function formatValue(value?: number | null) {
+  return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

@@ -8,7 +8,7 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: DATASTORY_DB
-        value: /var/data/datastory.db
+        value: /tmp/datastory.db
       - key: CORS_ORIGINS
         sync: false
       - key: OPENROUTER_API_KEY

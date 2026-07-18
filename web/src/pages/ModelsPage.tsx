@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "react-query";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   BarChart3,
   Check,
   ChevronRight,
@@ -15,8 +16,10 @@ import {
   Target,
   Trophy,
 } from "lucide-react";
-import { listModels, selectTarget, trainModels } from "../lib/api";
-import { downloadTextFile, shareText } from "../lib/browserActions";
+import { listModels, selectTarget, trainModels, type ImbalanceInfo } from "../lib/api";
+import { shareText } from "../lib/browserActions";
+import { markdownBarChart } from "../lib/markdownCharts";
+import { downloadModelingReportPdf } from "../lib/pdfReports";
 import { useAppState } from "../lib/store";
 import type { TrainResult } from "../lib/types";
 
@@ -44,6 +47,8 @@ export function ModelsPage() {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [testSize, setTestSize] = useState("0.2");
   const [cvFolds, setCvFolds] = useState("5");
+  const [imbalanceInfo, setImbalanceInfo] = useState<ImbalanceInfo | null>(null);
+  const [imbalanceStrategy, setImbalanceStrategy] = useState<"none" | "smote" | "class_weight">("none");
   const [notice, setNotice] = useState("");
 
   const recommendedTarget = dataset?.profile.possible_targets?.[0] ?? "";
@@ -55,7 +60,14 @@ export function ModelsPage() {
   const detect = useMutation(() => selectTarget(dataset!.dataset_id, target), {
     onSuccess: (data) => {
       setTaskType(data.task_type);
-      setNotice(`Target detected as ${data.task_type}. Choose models and start training.`);
+      setImbalanceInfo(data.imbalance_info ?? null);
+      const isImbalanced = Boolean(data.imbalance_info?.imbalanced ?? data.imbalance_info?.is_imbalanced);
+      setImbalanceStrategy(data.task_type === "classification" && isImbalanced ? "smote" : "none");
+      setNotice(
+        data.task_type === "classification" && isImbalanced
+          ? "Target detected as classification with imbalance. SMOTE is available and selected."
+          : `Target detected as ${data.task_type}. Choose models and start training.`,
+      );
     },
   });
 
@@ -75,6 +87,7 @@ export function ModelsPage() {
       trainModels(dataset!.dataset_id, target, taskType, selectedModels, {
         testSize: Number(testSize),
         cvFolds: Number(cvFolds),
+        imbalanceStrategy,
       }),
     {
       onSuccess: (data) => {
@@ -120,7 +133,21 @@ export function ModelsPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <button className="ds-button-secondary" onClick={() => exportReport(dataset.filename, results)}>
+              <button
+                className="ds-button-secondary"
+                onClick={() => {
+                  downloadModelingReportPdf({
+                    dataset,
+                    target,
+                    taskType,
+                    testSize: Number(testSize),
+                    cvFolds: Number(cvFolds),
+                    imbalanceStrategy,
+                    results,
+                  });
+                  setNotice("Branded modeling PDF downloaded.");
+                }}
+              >
                 <Download className="h-4 w-4" />
                 Export Modeling Report
               </button>
@@ -129,7 +156,26 @@ export function ModelsPage() {
                 onClick={async () => {
                   const message = await shareText(
                     `DataStory modeling for ${dataset.filename}`,
-                    `DataStory modeling for ${dataset.filename}: target ${target || "-"}, ${validResults.length} trained models.`,
+                    [
+                      `# DataStory Modeling Insights - ${dataset.filename}`,
+                      "",
+                      `- Target: ${target || "Not selected"}`,
+                      `- Task: ${taskType ? capitalize(taskType) : "Not detected"}`,
+                      `- Models trained: ${validResults.length}`,
+                      `- Best model: ${best ? displayModel(best.model_name) : "Not available"}`,
+                      `- Best score: ${best ? primaryScoreLabel(best, taskType) : "Not available"}`,
+                      "",
+                      "## Leaderboard",
+                      ...[...validResults].sort(compareResults(taskType)).map((row, index) => `${index + 1}. ${displayModel(row.model_name)} - ${primaryScoreLabel(row, taskType)}`),
+                      "",
+                      "## Generated Chart",
+                      markdownBarChart(
+                        taskType === "regression" ? "Model RMSE Comparison" : "Model Weighted F1 Comparison",
+                        [...validResults].sort(compareResults(taskType)).map((row) => displayModel(row.model_name)),
+                        [...validResults].sort(compareResults(taskType)).map((row) => Number(taskType === "regression" ? row.rmse : row.f1 ?? row.primary_score ?? 0)),
+                        taskType === "regression" ? "RMSE" : "Weighted F1",
+                      ),
+                    ].join("\n"),
                   );
                   setNotice(message);
                 }}
@@ -149,6 +195,8 @@ export function ModelsPage() {
                 onChange={(event) => {
                   setTarget(event.target.value);
                   setTaskType("");
+                  setImbalanceInfo(null);
+                  setImbalanceStrategy("none");
                   setSelectedModels([]);
                 }}
               >
@@ -181,6 +229,44 @@ export function ModelsPage() {
               </select>
             </label>
           </div>
+
+          {taskType === "classification" && imbalanceInfo && (
+            <div
+              className={`mt-5 rounded-xl border p-4 ${
+                Boolean(imbalanceInfo.imbalanced ?? imbalanceInfo.is_imbalanced)
+                  ? "border-amber-300 bg-[#FFF7E8] text-[#3d2d13] dark:border-amber-700/70 dark:bg-[#2b2418] dark:text-amber-50"
+                  : "border-[#cbdac3] bg-[#F3F8EF] text-[#263222] dark:border-[#506b45] dark:bg-[#1f2d1c] dark:text-[#e7f1df]"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-sage dark:text-[#a9ca91]" />
+                  <div>
+                    <h3 className="font-black">Class Imbalance Handling</h3>
+                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-200">
+                      {Boolean(imbalanceInfo.imbalanced ?? imbalanceInfo.is_imbalanced)
+                        ? "DataStory detected class imbalance. You can apply SMOTE safely inside the training pipeline, after the train/test split."
+                        : "No strong class imbalance was detected for this target."}
+                    </p>
+                    {imbalanceInfo.class_distribution && (
+                      <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        Distribution: {Object.entries(imbalanceInfo.class_distribution).map(([key, value]) => `${key}: ${value}`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <select
+                  className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-bold dark:bg-zinc-900"
+                  value={imbalanceStrategy}
+                  onChange={(event) => setImbalanceStrategy(event.target.value as "none" | "smote" | "class_weight")}
+                >
+                  <option value="none">No resampling</option>
+                  <option value="smote">Use SMOTE</option>
+                  <option value="class_weight">Use class weights</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 rounded-xl border border-line bg-stone-50/70 p-4 dark:bg-zinc-900/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -291,11 +377,22 @@ export function ModelsPage() {
                 <thead className="bg-stone-50 text-zinc-500 dark:bg-zinc-800">
                   <tr>
                     <th className="p-3">Model</th>
-                    <th className="p-3">Accuracy</th>
-                    <th className="p-3">Precision</th>
-                    <th className="p-3">Recall</th>
-                    <th className="p-3">Weighted F1 / RMSE</th>
-                    <th className="p-3">ROC / R2</th>
+                    {taskType === "regression" ? (
+                      <>
+                        <th className="p-3">RMSE</th>
+                        <th className="p-3">MAE</th>
+                        <th className="p-3">R2</th>
+                        <th className="p-3">CV RMSE</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="p-3">Accuracy</th>
+                        <th className="p-3">Precision</th>
+                        <th className="p-3">Recall</th>
+                        <th className="p-3">Weighted F1</th>
+                        <th className="p-3">ROC-AUC</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -307,11 +404,22 @@ export function ModelsPage() {
                         {best?.model_name === row.model_name && <span className="ml-2 rounded-full bg-[#EEF5E9] px-2 py-1 text-xs text-sage">Best</span>}
                         {row.error && <div className="mt-1 text-xs text-red-600">{row.error}</div>}
                       </td>
-                      <td className="p-3">{formatMetric(row.accuracy)}</td>
-                      <td className="p-3">{formatMetric(row.precision)}</td>
-                      <td className="p-3">{formatMetric(row.recall)}</td>
-                      <td className="p-3">{taskType === "regression" ? formatMetric(row.rmse) : formatMetric(row.f1)}</td>
-                      <td className="p-3">{taskType === "regression" ? formatMetric(row.r2) : formatMetric(row.roc_auc)}</td>
+                      {taskType === "regression" ? (
+                        <>
+                          <td className="p-3">{formatMetric(row.rmse)}</td>
+                          <td className="p-3">{formatMetric(row.mae)}</td>
+                          <td className="p-3">{formatMetric(row.r2)}</td>
+                          <td className="p-3">{formatMetric(row.cv_score)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="p-3">{formatMetric(row.accuracy)}</td>
+                          <td className="p-3">{formatMetric(row.precision)}</td>
+                          <td className="p-3">{formatMetric(row.recall)}</td>
+                          <td className="p-3">{formatMetric(row.f1)}</td>
+                          <td className="p-3">{formatMetric(row.roc_auc)}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -357,7 +465,6 @@ export function ModelsPage() {
     </div>
   );
 }
-
 function compareResults(taskType: string) {
   return (a: TrainResult, b: TrainResult) => {
     if (taskType === "regression") return (a.rmse ?? Number.POSITIVE_INFINITY) - (b.rmse ?? Number.POSITIVE_INFINITY);
@@ -394,14 +501,4 @@ function Score({ label, value }: { label: string; value?: number | null }) {
       <div className="mt-1 text-lg font-black text-sage">{formatMetric(value)}</div>
     </div>
   );
-}
-
-function exportReport(filename: string, results: TrainResult[]) {
-  const lines = [
-    "DataStory Modeling Report",
-    `Dataset: ${filename}`,
-    "",
-    ...results.map((row) => `${row.model_name}: score=${row.primary_score ?? "-"} accuracy=${row.accuracy ?? "-"} f1=${row.f1 ?? "-"} rmse=${row.rmse ?? "-"}`),
-  ];
-  downloadTextFile(`${filename.replace(/\.csv$/i, "")}_modeling_report.txt`, lines.join("\n"));
 }

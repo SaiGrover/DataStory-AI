@@ -33,6 +33,11 @@ reports/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+node_modules/
+web/node_modules/
+web/dist/
+output/
+tmp/
 
 # IDE
 .vscode/

@@ -241,8 +241,22 @@ export function CleanPage() {
     () => (dataset?.profile.column_details ?? []).filter((col) => /int|float|double|number/i.test(String(col.Type))).map((col) => String(col.Column)),
     [dataset],
   );
-  const [numericScope, setNumericScope] = useState<"all" | "selected">("all");
-  const [selectedNumericColumns, setSelectedNumericColumns] = useState<string[]>([]);
+  const categoricalColumns = useMemo(
+    () => (dataset?.profile.column_details ?? []).filter((col) => /object|category|bool|string/i.test(String(col.Type))).map((col) => String(col.Column)),
+    [dataset],
+  );
+  const allColumns = useMemo(() => dataset?.column_names ?? [], [dataset]);
+  const [optionColumns, setOptionColumns] = useState<Record<string, string[]>>({});
+  const [optionParams, setOptionParams] = useState<Record<string, string>>({
+    drop_high_missing: "50",
+    custom_fill: "",
+    clip_percentile: "1,99",
+    remove_zscore: "3",
+    rare_other: "1",
+    round: "2",
+    clip_range: "",
+    high_corr: "0.90",
+  });
 
   const selectedOptions = useMemo(() => groups.flatMap((group) => group.options).filter((option) => selected.has(option.id)), [selected]);
   const selectedCount = selected.size;
@@ -263,11 +277,33 @@ export function CleanPage() {
     if (selected.has("custom_fill")) {
       merged.numeric_fill = "Custom value";
       merged.cat_fill = "Custom value";
+      if (optionParams.custom_fill) {
+        merged.custom_num_val = optionParams.custom_fill;
+        merged.custom_cat_val = optionParams.custom_fill;
+      }
     }
     if (selected.has("num_mode") || selected.has("standardize_categories")) merged.cat_fill = "Mode";
-    if (numericScope === "selected" && selectedNumericColumns.length > 0) merged.numeric_columns = selectedNumericColumns;
+    if (selected.has("drop_high_missing")) {
+      merged.drop_missing_threshold = Math.min(Math.max(Number(optionParams.drop_high_missing || 50), 0), 100) / 100;
+    }
+    const numericScoped = collectOptionColumns(optionColumns, ["num_mean", "num_median", "num_mode", "custom_fill", "remove_iqr", "winsor", "clip_percentile", "negative_invalid", "infinite", "round", "clip_range", "impossible", "standard_scaler", "minmax", "robust", "maxabs", "normalize", "high_corr", "vif"]);
+    const categoricalScoped = collectOptionColumns(optionColumns, ["standardize_categories", "merge_similar", "rare_other", "yes_no", "trim_category", "onehot", "label", "ordinal", "frequency", "target_encoding", "binary"]);
+    const textScoped = collectOptionColumns(optionColumns, ["strip_spaces", "lowercase", "uppercase", "title_case", "extra_spaces", "punctuation", "special_chars", "html_tags", "emojis", "unicode"]);
+    const dropScoped = collectOptionColumns(optionColumns, ["drop_selected", "id_columns", "remove_constant", "low_variance", "zero_variance"]);
+    const duplicateScoped = collectOptionColumns(optionColumns, ["dups_selected_cols"]);
+    const dateScoped = collectOptionColumns(optionColumns, ["detect_dates", "parse_dates", "to_datetime", "year", "month", "day", "weekday", "quarter", "age_from_date", "time_diff"]);
+    const typeScoped = collectOptionColumns(optionColumns, ["to_numeric", "to_category", "to_boolean", "mixed_types", "infer_types"]);
+    if (numericScoped.length) merged.numeric_columns = numericScoped;
+    if (categoricalScoped.length) merged.categorical_columns = categoricalScoped;
+    if (textScoped.length) merged.text_columns = textScoped;
+    if (dropScoped.length) merged.drop_columns = dropScoped;
+    if (duplicateScoped.length) merged.duplicate_key_columns = duplicateScoped;
+    if (dateScoped.length) merged.date_columns = dateScoped;
+    if (typeScoped.length) merged.type_columns = typeScoped;
+    const outlierScoped = collectOptionColumns(optionColumns, ["remove_iqr", "winsor", "clip_percentile"]);
+    if (outlierScoped.length) merged.outlier_columns = outlierScoped;
     return merged;
-  }, [numericScope, selected, selectedNumericColumns, selectedOptions]);
+  }, [optionColumns, optionParams, selected, selectedOptions]);
 
   const preview = useMutation(() => previewCleaning(dataset!.dataset_id, config));
   const apply = useMutation(() => applyCleaning(dataset!.dataset_id, config), {
@@ -309,8 +345,8 @@ export function CleanPage() {
   const estimatedColumns = preview.data?.columns ?? dataset.columns;
   const estimatedMissing = preview.data?.missing ?? (dataset.profile.total_missing ?? 0);
   const estimatedDuplicates = preview.data?.duplicates ?? (dataset.profile.duplicates ?? 0);
-  const numericFillSelected = selectedOptions.some((option) => ["num_mean", "num_median", "num_mode", "custom_fill"].includes(option.id));
-  const numericSelectionInvalid = numericFillSelected && numericScope === "selected" && selectedNumericColumns.length === 0;
+  const customFillInvalid = selected.has("custom_fill") && optionParams.custom_fill.trim().length === 0;
+  const configInvalid = customFillInvalid;
 
   return (
     <div className="grid grid-cols-[320px_minmax(0,1fr)] items-start gap-5">
@@ -355,11 +391,11 @@ export function CleanPage() {
             );
           })}
         </div>
-        <button className="ds-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60" onClick={() => preview.mutate()} disabled={preview.isLoading || numericSelectionInvalid}>
+        <button className="ds-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60" onClick={() => preview.mutate()} disabled={preview.isLoading || configInvalid}>
           <Eye className="h-4 w-4" />
           Preview Impact
         </button>
-        <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => apply.mutate()} disabled={apply.isLoading || numericSelectionInvalid}>
+        <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => apply.mutate()} disabled={apply.isLoading || configInvalid}>
           <Wand2 className="h-4 w-4" />
           {apply.isLoading ? "Applying..." : "Confirm & Apply"}
         </button>
@@ -394,11 +430,14 @@ export function CleanPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-4">
+          <div className={`mt-5 grid gap-4 ${activeGroup === "all" && !showExpanded ? "grid-cols-3" : "grid-cols-1"}`}>
             {visibleGroups.map((group, index) => {
               const Icon = group.icon;
               const groupSelected = group.options.filter((option) => selected.has(option.id)).length;
-              const displayedOptions = showExpanded || activeGroup !== "all" ? group.options : group.options.slice(0, 5);
+              const displayedOptions = showExpanded || activeGroup !== "all"
+                ? group.options
+                : group.options.filter((option) => selected.has(option.id)).slice(0, 5);
+              if (activeGroup === "all" && !showExpanded && displayedOptions.length === 0) return null;
               return (
                 <article key={group.id} className="rounded-xl border border-line bg-white p-4 shadow-[0_10px_28px_rgba(39,43,34,.04)] dark:bg-zinc-900">
                   <div className="mb-4 flex items-center justify-between gap-3">
@@ -412,20 +451,41 @@ export function CleanPage() {
                     </div>
                     <span className="rounded-full bg-[#EEF5E9] px-2.5 py-1 text-[10px] font-bold text-sage">{groupSelected} selected</span>
                   </div>
-                  <div className="space-y-2">
-                    {displayedOptions.map((option) => (
-                      <label key={option.id} className="flex cursor-pointer items-start gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-                        <span
-                          className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border ${
-                            selected.has(option.id) ? "border-sage bg-sage text-white" : "border-line bg-white dark:bg-zinc-950"
-                          }`}
-                        >
-                          {selected.has(option.id) && <Check className="h-3 w-3" />}
-                        </span>
-                        <input type="checkbox" className="hidden" checked={selected.has(option.id)} onChange={() => toggle(option.id)} />
-                        <span>{option.label}</span>
-                      </label>
-                    ))}
+                  <div className={activeGroup === "all" && !showExpanded ? "space-y-2" : "grid grid-cols-2 gap-3 xl:grid-cols-3"}>
+                    {displayedOptions.map((option) => {
+                      const columns = optionColumnChoices(option.id, numericColumns, categoricalColumns, allColumns);
+                      const canConfigure = showExpanded || activeGroup !== "all";
+                      return (
+                        <div key={option.id} className="rounded-lg border border-line/70 p-2">
+                          <label className={`flex items-start gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200 ${canConfigure ? "cursor-pointer" : ""}`}>
+                            <span
+                              className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border ${
+                                selected.has(option.id) ? "border-sage bg-sage text-white" : "border-line bg-white dark:bg-zinc-950"
+                              }`}
+                            >
+                              {selected.has(option.id) && <Check className="h-3 w-3" />}
+                            </span>
+                            <input type="checkbox" className="hidden" checked={selected.has(option.id)} disabled={!canConfigure} onChange={() => toggle(option.id)} />
+                            <span>{option.label}</span>
+                          </label>
+                          {selected.has(option.id) && canConfigure && columns.length > 0 && (
+                            <ColumnMultiSelect
+                              optionId={option.id}
+                              columns={columns}
+                              selected={optionColumns[option.id] ?? []}
+                              onChange={(values) => setOptionColumns((current) => ({ ...current, [option.id]: values }))}
+                            />
+                          )}
+                          {selected.has(option.id) && canConfigure && (
+                            <OptionParameterFields
+                              optionId={option.id}
+                              value={optionParams[option.id] ?? ""}
+                              onChange={(value) => setOptionParams((current) => ({ ...current, [option.id]: value }))}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {group.options.length > displayedOptions.length && <div className="mt-3 text-xs font-bold text-zinc-500">+{group.options.length - displayedOptions.length} more options</div>}
                   <button
@@ -443,41 +503,7 @@ export function CleanPage() {
             })}
           </div>
 
-          {selectedOptions.some((option) => ["num_mean", "num_median", "num_mode", "custom_fill"].includes(option.id)) && (
-            <div className="mt-5 rounded-xl border border-line bg-[#FBF7ED] p-4 dark:bg-zinc-900">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-black">Numeric Fill Columns</h3>
-                  <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Choose which numeric columns receive the selected fill strategy.</p>
-                </div>
-                <div className="flex rounded-lg border border-line bg-white p-1 text-xs font-bold dark:bg-zinc-950">
-                  <button className={`rounded-md px-3 py-1.5 ${numericScope === "all" ? "bg-sage text-white" : "text-zinc-500"}`} onClick={() => setNumericScope("all")}>
-                    All numeric
-                  </button>
-                  <button className={`rounded-md px-3 py-1.5 ${numericScope === "selected" ? "bg-sage text-white" : "text-zinc-500"}`} onClick={() => setNumericScope("selected")}>
-                    Selected
-                  </button>
-                </div>
-              </div>
-              {numericScope === "selected" && (
-                <div className="mt-4 grid grid-cols-4 gap-2">
-                  {numericColumns.map((column) => (
-                    <label key={column} className="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold dark:bg-zinc-950">
-                      <input
-                        type="checkbox"
-                        checked={selectedNumericColumns.includes(column)}
-                        onChange={() =>
-                          setSelectedNumericColumns((current) => (current.includes(column) ? current.filter((item) => item !== column) : [...current, column]))
-                        }
-                      />
-                      <span className="truncate">{column}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              {numericSelectionInvalid && <div className="mt-3 text-xs font-bold text-amber-700">Select at least one numeric column, or switch back to All numeric.</div>}
-            </div>
-          )}
+          {customFillInvalid && <div className="mt-4 rounded-xl border border-amber-300 bg-[#FFF7E8] p-3 text-xs font-bold text-amber-800">Enter a custom fill value before previewing or applying.</div>}
         </section>
 
         <section className="grid grid-cols-[1fr_.75fr] gap-5">
@@ -529,7 +555,7 @@ export function CleanPage() {
                 <Bot className="h-4 w-4" />
                 Continue to Analysis
               </button>
-              <button className="ml-3 mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => apply.mutate()} disabled={apply.isLoading || numericSelectionInvalid}>
+              <button className="ml-3 mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => apply.mutate()} disabled={apply.isLoading || configInvalid}>
                 <Wand2 className="h-4 w-4" />
                 Apply Options
               </button>
@@ -540,6 +566,116 @@ export function CleanPage() {
           </aside>
         </section>
       </main>
+    </div>
+  );
+}
+
+function collectOptionColumns(optionColumns: Record<string, string[]>, ids: string[]) {
+  return Array.from(new Set(ids.flatMap((id) => optionColumns[id] ?? [])));
+}
+
+function optionColumnChoices(optionId: string, numericColumns: string[], categoricalColumns: string[], allColumns: string[]) {
+  if ([
+    "num_mean", "num_median", "num_mode", "custom_fill", "remove_iqr", "winsor", "clip_percentile",
+    "negative_invalid", "infinite", "round", "clip_range", "impossible", "standard_scaler", "minmax",
+    "robust", "maxabs", "normalize", "high_corr", "vif",
+  ].includes(optionId)) return numericColumns;
+  if ([
+    "standardize_categories", "merge_similar", "rare_other", "yes_no", "trim_category", "onehot",
+    "label", "ordinal", "frequency", "target_encoding", "binary",
+  ].includes(optionId)) return categoricalColumns;
+  if ([
+    "strip_spaces", "lowercase", "uppercase", "title_case", "extra_spaces", "punctuation", "special_chars", "html_tags", "emojis", "unicode",
+  ].includes(optionId)) return categoricalColumns;
+  if ([
+    "drop_selected", "id_columns", "remove_constant", "low_variance", "zero_variance", "dups_selected_cols",
+    "to_numeric", "to_category", "to_boolean", "to_datetime", "parse_dates", "detect_dates", "mixed_types",
+    "infer_types", "year", "month", "day", "weekday", "quarter", "age_from_date", "time_diff",
+    "rename", "reorder", "merge_columns", "split_column", "duplicate_columns", "leakage",
+  ].includes(optionId)) return allColumns;
+  return [];
+}
+
+function OptionParameterFields({
+  optionId,
+  value,
+  onChange,
+}: {
+  optionId: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const config = optionParameterConfig(optionId);
+  if (!config) return null;
+  return (
+    <label className="mt-2 block rounded-lg bg-[#F7FAF4] p-2 text-[11px] font-semibold text-zinc-600 dark:bg-[#151d16] dark:text-zinc-300">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-zinc-500">{config.label}</span>
+      <input
+        className="w-full rounded-md border border-line bg-white px-2 py-1.5 text-xs font-bold text-ink dark:bg-[#101611]"
+        value={value}
+        placeholder={config.placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <span className="mt-1 block text-[10px] text-zinc-500">{config.help}</span>
+    </label>
+  );
+}
+
+function optionParameterConfig(optionId: string) {
+  const configs: Record<string, { label: string; placeholder: string; help: string }> = {
+    drop_high_missing: { label: "Missing threshold (%)", placeholder: "50", help: "Columns above this missing-value percentage are dropped." },
+    custom_fill: { label: "Fill value", placeholder: "Unknown or 0", help: "Used for the selected numeric/categorical fill columns." },
+    clip_percentile: { label: "Percentile bounds", placeholder: "1,99", help: "For percentile clipping; currently saved as intent for this cleaning run." },
+    remove_zscore: { label: "Z-score threshold", placeholder: "3", help: "Typical outlier threshold is 3 standard deviations." },
+    rare_other: { label: "Rare category (%)", placeholder: "1", help: "Categories below this frequency should become Other." },
+    round: { label: "Decimal places", placeholder: "2", help: "Number of decimals for rounded numeric values." },
+    clip_range: { label: "Allowed range", placeholder: "0,100", help: "Minimum and maximum accepted numeric values." },
+    high_corr: { label: "Correlation threshold", placeholder: "0.90", help: "Features above this absolute correlation are redundant candidates." },
+    split_column: { label: "Delimiter", placeholder: ",", help: "Character used to split selected text columns." },
+  };
+  return configs[optionId];
+}
+
+function ColumnMultiSelect({
+  optionId,
+  columns,
+  selected,
+  onChange,
+}: {
+  optionId: string;
+  columns: string[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const shown = columns.slice(0, 12);
+  return (
+    <div className="mt-2 rounded-lg bg-stone-50 p-2 dark:bg-[#151d16]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+          Columns {selected.length ? `(${selected.length})` : "(all eligible)"}
+        </span>
+        <button
+          type="button"
+          className="text-[10px] font-bold text-sage"
+          onClick={() => onChange(selected.length ? [] : columns)}
+        >
+          {selected.length ? "Use all" : "Pick columns"}
+        </button>
+      </div>
+      {selected.length === 0 && <div className="mb-2 rounded-md bg-[#EEF5E9] px-2 py-1 text-[10px] font-bold text-sage dark:bg-[#263224]">Applies to every eligible column unless you pick specific columns below.</div>}
+      <div className="grid grid-cols-2 gap-1">
+        {shown.map((column) => (
+          <label key={`${optionId}-${column}`} className="flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              checked={selected.includes(column)}
+              onChange={() => onChange(selected.includes(column) ? selected.filter((item) => item !== column) : [...selected, column])}
+            />
+            <span className="truncate">{column}</span>
+          </label>
+        ))}
+      </div>
+      {columns.length > shown.length && <div className="mt-2 text-[10px] text-zinc-500">Showing first {shown.length} of {columns.length}. Use All to apply to every eligible column.</div>}
     </div>
   );
 }

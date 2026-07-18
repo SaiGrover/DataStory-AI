@@ -41,7 +41,7 @@ export function StartPage() {
 
   return (
     <div className="pb-28">
-      <section className="grid min-h-[390px] grid-cols-[1fr_.95fr] items-center gap-8 overflow-hidden rounded-none">
+      <section className="relative grid min-h-[430px] grid-cols-[1fr_.95fr] items-center gap-8 overflow-hidden rounded-[28px] border border-line bg-white/70 px-8 py-8 shadow-soft dark:bg-[#182118]/80">
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
           <div className="mb-5 inline-flex rounded-full bg-[#EEF1EA] px-4 py-2 text-sm font-bold text-sage">AI-POWERED DATA ANALYSIS</div>
           <h1 className="max-w-4xl text-6xl font-extrabold leading-tight tracking-normal">
@@ -74,9 +74,20 @@ export function StartPage() {
           <div className="mt-5 text-sm text-zinc-500">100% private • Your data stays on your device until you upload it to the local API.</div>
           {uploadMutation.error instanceof Error && <div className="mt-4 text-sm font-semibold text-red-600">{uploadMutation.error.message}</div>}
         </motion.div>
-        <div className="relative h-[360px]">
-          <div className="absolute inset-y-0 right-0 w-[680px] rounded-[50%] bg-[#E8E2D9]" />
-          <img className="absolute bottom-0 right-0 z-10 w-[720px] max-w-none" src="/hero_workspace.png" alt="Workspace dashboard" />
+        <div className="relative h-[380px]">
+          <div className="absolute inset-y-0 right-0 w-[680px] rounded-[50%] bg-[#DDEBD1] dark:bg-[#253322]" />
+          <img className="absolute bottom-0 right-3 z-10 w-[690px] max-w-none drop-shadow-[0_28px_35px_rgba(55,72,45,.18)]" src="/hero_workspace.png" alt="Workspace dashboard" />
+          <div className="absolute right-8 top-8 z-20 rounded-2xl border border-line bg-white/90 p-4 shadow-soft dark:bg-[#263224]/90">
+            <div className="text-xs font-bold uppercase tracking-wide text-sage">Clean signal</div>
+            <div className="mt-1 text-sm text-zinc-500">EDA, models, report</div>
+          </div>
+          <div className="absolute bottom-8 left-6 z-20 flex items-center gap-3 rounded-2xl border border-line bg-white/90 p-4 shadow-soft dark:bg-[#263224]/90">
+            <img src="/pot_plant_small.png" alt="" className="h-12 w-12 object-contain" />
+            <div>
+              <div className="text-sm font-black">DataStory AI</div>
+              <div className="text-xs text-zinc-500">Ask your dataset anything</div>
+            </div>
+          </div>
         </div>
       </section>
 

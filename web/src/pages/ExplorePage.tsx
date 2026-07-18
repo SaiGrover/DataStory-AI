@@ -17,7 +17,9 @@ import {
   Target,
 } from "lucide-react";
 import { getEda } from "../lib/api";
-import { downloadTextFile, shareText } from "../lib/browserActions";
+import { shareText } from "../lib/browserActions";
+import { markdownBarChart, markdownPieChart } from "../lib/markdownCharts";
+import { downloadEdaReportPdf } from "../lib/pdfReports";
 import { useAppState } from "../lib/store";
 
 export function ExplorePage() {
@@ -58,6 +60,7 @@ export function ExplorePage() {
   const missingColumns = missingRows.filter((row) => row.count > 0);
   const correlationColumns = eda.data?.correlation?.columns ?? analysisNumericProfiles.map((item) => item.column);
   const correlationValues = eda.data?.correlation?.values ?? [];
+  const strongestCorrelation = strongestCorrelationPair(correlationColumns, correlationValues);
   const topOutlierFeature = analysisNumericProfiles
     .filter((item) => item.box.outliers > 0)
     .sort((a, b) => b.box.outliers - a.box.outliers)[0];
@@ -67,17 +70,44 @@ export function ExplorePage() {
     topOutlierFeature ? `${topOutlierFeature.column} contains ${topOutlierFeature.box.outliers.toLocaleString()} IQR outliers.` : "No IQR outliers were detected in the profiled numeric columns.",
     idColumns.length ? `${idColumns.join(", ")} identified as ID column${idColumns.length > 1 ? "s" : ""} and excluded from analysis charts.` : "No obvious ID columns were detected.",
   ];
+  const aiInsightCards = [
+    {
+      title: "Target Readiness",
+      message: recommendedTarget
+        ? `${recommendedTarget} is the strongest target candidate. It has ${targetUnique?.toLocaleString() ?? "unknown"} unique value(s), so verify it matches the prediction goal before modeling.`
+        : "No target candidate is available. Pick a meaningful output column before training models.",
+    },
+    {
+      title: "Cleaning Priority",
+      message: missingTotal > 0
+        ? `Handle ${missingTotal.toLocaleString()} missing cells before modeling. Use median for skewed numeric columns and mode for categorical columns unless domain rules say otherwise.`
+        : `Missing values are already clean. Focus next on duplicates (${profile.duplicates ?? 0}) and outliers.`,
+    },
+    {
+      title: "Outlier Signal",
+      message: topOutlierFeature
+        ? `${topOutlierFeature.column} has the largest outlier count (${topOutlierFeature.box.outliers.toLocaleString()}). Review a violin/box plot before removing rows.`
+        : "No major IQR outlier signal was found in the profiled numeric columns.",
+    },
+    {
+      title: "Correlation Signal",
+      message: strongestCorrelation
+        ? `${strongestCorrelation.left} and ${strongestCorrelation.right} have the strongest numeric relationship (${strongestCorrelation.value.toFixed(3)}). Check whether both are needed in modeling.`
+        : "No strong numeric correlation pair is available yet.",
+    },
+  ];
   const memory = Math.max(1, Math.round(JSON.stringify(profile).length / 10));
 
   const sections = [
     ["Overview", "selected", Grid3X3],
     ["Feature Summary", `${dataset.columns} features`, Table2],
     ["Distributions", `${analysisNumericProfiles.length + analysisCategoricalProfiles.length} charts`, BarChart3],
+    ["Advanced Plots", `${analysisNumericProfiles.length} numeric`, Sparkles],
     ["Correlations", correlationColumns.length > 1 ? "1 matrix" : "0 matrix", LineChart],
     ["Missing Values", `${missingColumns.length} columns`, AlertTriangle],
     ["Outliers", `${analysisNumericProfiles.filter((item) => item.box.outliers > 0).length} features`, Target],
     ["Categorical Insights", `${analysisCategoricalProfiles.length} charts`, PieChart],
-    ["AI Insights", `${Math.max(keyFindings.length, profile.warnings?.length ?? 0)} findings`, Sparkles],
+    ["AI Insights", `${Math.max(aiInsightCards.length, profile.warnings?.length ?? 0)} findings`, Sparkles],
   ] as const;
 
   const metricCards = [
@@ -89,47 +119,29 @@ export function ExplorePage() {
   ] as const;
 
   return (
-    <div className="grid grid-cols-[300px_minmax(0,1fr)] gap-5">
-      <aside className="ds-card self-start p-5">
+    <div className="grid grid-cols-[300px_minmax(0,1fr)] items-start gap-5">
+      <aside className="ds-card sticky top-36 max-h-[calc(100vh-250px)] overflow-y-auto p-5">
         <h2 className="text-xl font-black">Analysis Sections</h2>
         <p className="mt-2 text-sm leading-6 text-zinc-500">Navigate through different aspects of your exploratory analysis.</p>
-        <div className="mt-6 space-y-2">
-          {sections.map(([label, count, Icon]) => {
-            const isActive = activeSection === label;
-            return (
+        <div className="mt-7 space-y-2">
+          {sections.map(([tab, count, Icon]) => (
             <button
-              key={label}
-              className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                isActive ? "bg-[#EEF5E9] text-sage" : "hover:bg-stone-50 dark:hover:bg-zinc-800"
+              key={tab}
+              onClick={() => setActiveSection(tab)}
+              className={`grid w-full grid-cols-[28px_1fr_auto_16px] items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${
+                activeSection === tab ? "bg-[#EEF5E9] text-sage dark:bg-[#263224]" : "hover:bg-stone-50 dark:hover:bg-[#1d232c]"
               }`}
-              onClick={() => setActiveSection(label)}
             >
-              <Icon className="h-5 w-5 shrink-0" />
-              <span className="min-w-0 whitespace-normal text-[15px] leading-5">{label}</span>
-              <span className="flex shrink-0 items-center gap-2 text-xs text-zinc-500">
-                <span className="rounded-full bg-white px-2 py-1 dark:bg-zinc-900">{isActive ? "selected" : count}</span>
-                {!isActive && <ChevronRight className="h-3 w-3" />}
+              <Icon className="h-4 w-4" />
+              <span className="min-w-0 truncate">{tab}</span>
+              <span className="rounded-full bg-[#15191c] px-2 py-1 text-[10px] text-[#DCEBCB] dark:bg-[#101611]">
+                {activeSection === tab ? "selected" : count}
               </span>
+              <ChevronRight className="h-3 w-3 text-zinc-500" />
             </button>
-            );
-          })}
+          ))}
         </div>
-        <button className="ds-button-primary mt-8 w-full" onClick={() => setActiveSection("AI Insights")}>
-          <Sparkles className="h-4 w-4" />
-          Preview Impact
-        </button>
-        <button
-          className="ds-button-secondary mt-3 w-full"
-          onClick={() => {
-            setActiveSection("Overview");
-            setNotice("Insights refreshed from the latest dataset profile.");
-          }}
-        >
-          <RefreshCw className="h-4 w-4" />
-          Regenerate Insights
-        </button>
       </aside>
-
       <main className="space-y-5">
         <section className="ds-card p-6">
           <div className="flex items-start justify-between gap-5">
@@ -148,8 +160,13 @@ export function ExplorePage() {
               <button
                 className="ds-button-secondary"
                 onClick={() => {
-                  const content = `DataStory EDA Report\nDataset: ${dataset.filename}\nRows: ${dataset.rows}\nColumns: ${dataset.columns}\nHealth: ${profile.health_score ?? 0}/100`;
-                  downloadTextFile(`${dataset.filename.replace(/\.csv$/i, "")}_eda_report.txt`, content);
+                  downloadEdaReportPdf({
+                    dataset,
+                    eda: eda.data,
+                    findings: keyFindings,
+                    recommendedTarget,
+                  });
+                  setNotice("Branded EDA PDF downloaded.");
                 }}
               >
                 <Download className="h-4 w-4" />
@@ -160,7 +177,38 @@ export function ExplorePage() {
                 onClick={async () => {
                   const message = await shareText(
                     `DataStory insights for ${dataset.filename}`,
-                    `DataStory insights for ${dataset.filename}: ${dataset.rows} rows, ${dataset.columns} columns, health ${profile.health_score ?? 0}/100.`,
+                    [
+                      `# DataStory EDA Insights - ${dataset.filename}`,
+                      "",
+                      `- Dataset shape: ${dataset.rows.toLocaleString()} rows x ${dataset.columns.toLocaleString()} columns`,
+                      `- Data health: ${profile.health_score ?? 0}/100`,
+                      `- Missing cells: ${missingTotal.toLocaleString()}`,
+                      `- Duplicate rows: ${(profile.duplicates ?? 0).toLocaleString()}`,
+                      `- Recommended target: ${recommendedTarget || "Not selected"}`,
+                      "",
+                      "## Key Findings",
+                      ...keyFindings.map((finding) => `- ${finding}`),
+                      "",
+                      "## Generated Charts",
+                      "",
+                      "### Column Data Types",
+                      markdownPieChart("Column Data Types", ["Numeric", "Categorical"], [numericCount, categoricalCount]),
+                      "",
+                      ...(firstNumeric ? [
+                        `### ${firstNumeric.column} Distribution`,
+                        markdownBarChart(
+                          `${firstNumeric.column} Distribution`,
+                          firstNumeric.histogram.bins.slice(0, -1).map((value, index) => `${value.toFixed(1)}-${firstNumeric.histogram.bins[index + 1]?.toFixed(1)}`),
+                          firstNumeric.histogram.counts,
+                          "Count",
+                        ),
+                        "",
+                      ] : []),
+                      ...(firstCategorical ? [
+                        `### ${firstCategorical.column} Categories`,
+                        markdownBarChart(`${firstCategorical.column} Categories`, firstCategorical.labels, firstCategorical.counts, "Count"),
+                      ] : []),
+                    ].join("\n"),
                   );
                   setNotice(message);
                 }}
@@ -169,18 +217,6 @@ export function ExplorePage() {
                 Share Insights
               </button>
             </div>
-          </div>
-
-          <div className="mt-6 flex gap-8 border-b border-line text-sm font-bold text-zinc-500">
-            {["Overview", "Distributions", "Correlations", "Missing Values", "Outliers", "Categorical Insights"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveSection(tab)}
-                className={`border-b-2 pb-3 ${activeSection === tab ? "border-sage text-sage" : "border-transparent hover:text-ink dark:hover:text-zinc-100"}`}
-              >
-                {tab}
-              </button>
-            ))}
           </div>
 
           <div className="mt-5 grid grid-cols-5 gap-4">
@@ -348,6 +384,26 @@ export function ExplorePage() {
           </section>
         )}
 
+        {activeSection === "Advanced Plots" && (
+          <section className="space-y-5">
+            <div className="grid grid-cols-3 gap-5">
+              {analysisNumericProfiles.slice(0, 6).map((item) => (
+                <ChartCard key={`${item.column}-kde`} title={`${item.column} KDE`} kind="kde" numeric={item} />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-5">
+              {analysisNumericProfiles.slice(0, 6).map((item) => (
+                <ChartCard key={`${item.column}-violin`} title={`${item.column} Violin`} kind="violin" numeric={item} />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-5">
+              {analysisNumericProfiles.slice(0, 6).map((item) => (
+                <ChartCard key={`${item.column}-box`} title={`${item.column} Box Plot`} kind="box" numeric={item} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {activeSection === "Missing Values" && (
           <section className="ds-card p-5">
             <h3 className="font-black">Missing Values Detail</h3>
@@ -437,7 +493,7 @@ export function ExplorePage() {
         {activeSection === "AI Insights" && (
           <section className="grid grid-cols-2 gap-5">
             {[
-              ...keyFindings.map((finding) => ({ title: "DataStory Finding", message: finding })),
+              ...aiInsightCards,
               ...(profile.warnings ?? []),
             ].map((warning, index) => (
               <div key={`${warning.title}-${index}`} className="ds-card p-5">
@@ -459,8 +515,8 @@ function ChartCard({
   categorical,
 }: {
   title: string;
-  kind: "donut" | "histogram" | "bar";
-  numeric?: { histogram: { bins: number[]; counts: number[] } };
+  kind: "donut" | "histogram" | "bar" | "kde" | "violin" | "box";
+  numeric?: { histogram: { bins: number[]; counts: number[] }; values?: number[]; kde?: { x: number[]; y: number[] }; box?: { min: number; q1: number; median: number; q3: number; max: number; outliers: number } };
   categorical?: { labels: string[]; counts: number[] };
 }) {
   const x = numeric?.histogram.bins.slice(0, -1).map((bin, index) => Math.round(((bin + numeric.histogram.bins[index + 1]) / 2) * 100) / 100) ?? [];
@@ -468,12 +524,18 @@ function ChartCard({
     <div className="ds-card p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-black">{title}</h3>
-        <span className="rounded-lg border border-line px-3 py-1 text-[11px] font-bold text-zinc-500">{kind === "histogram" ? "Histogram" : kind === "bar" ? "Bar" : "Donut"}</span>
+        <span className="rounded-lg border border-line px-3 py-1 text-[11px] font-bold text-zinc-500">{plotLabel(kind)}</span>
       </div>
       <Plot
         data={
           kind === "histogram"
             ? [{ type: "bar", x, y: numeric?.histogram.counts ?? [], marker: { color: "#6FA95F" } }]
+            : kind === "kde"
+              ? [{ type: "scatter", mode: "lines", x: numeric?.kde?.x ?? [], y: numeric?.kde?.y ?? [], fill: "tozeroy", line: { color: "#6FA95F", width: 3 } }]
+            : kind === "violin"
+              ? [{ type: "violin", y: numeric?.values ?? [], box: { visible: true }, meanline: { visible: true }, fillcolor: "rgba(111,169,95,.35)", line: { color: "#4F7D3A" }, points: false }]
+            : kind === "box"
+              ? [{ type: "box", y: numeric?.values ?? [], boxpoints: "outliers", marker: { color: "#6FA95F" }, line: { color: "#4F7D3A" } }]
             : kind === "donut"
               ? [{ type: "pie", labels: categorical?.labels ?? [], values: categorical?.counts ?? [], hole: 0.58, textinfo: "percent", hoverinfo: "label+value+percent", marker: { colors: ["#6FA95F", "#F06F4F", "#F0B66E", "#4F83E8"] } }]
               : [{ type: "bar", x: categorical?.labels ?? [], y: categorical?.counts ?? [], marker: { color: "#6FA95F" } }]
@@ -490,4 +552,26 @@ function ChartCard({
       />
     </div>
   );
+}
+
+function strongestCorrelationPair(columns: string[], values: number[][]): { left: string; right: string; value: number } | null {
+  let best: { left: string; right: string; value: number } | null = null;
+  columns.forEach((left, rowIndex) => {
+    columns.forEach((right, columnIndex) => {
+      if (columnIndex <= rowIndex) return;
+      const value = Number(values[rowIndex]?.[columnIndex]);
+      if (!Number.isFinite(value)) return;
+      if (!best || Math.abs(value) > Math.abs(best.value)) best = { left, right, value };
+    });
+  });
+  return best;
+}
+
+function plotLabel(kind: "donut" | "histogram" | "bar" | "kde" | "violin" | "box") {
+  if (kind === "histogram") return "Histogram";
+  if (kind === "bar") return "Bar";
+  if (kind === "kde") return "KDE";
+  if (kind === "violin") return "Violin";
+  if (kind === "box") return "Box";
+  return "Donut";
 }

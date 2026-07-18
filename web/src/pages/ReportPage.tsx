@@ -28,6 +28,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { getEda, type EdaResponse } from "../lib/api";
 import { downloadTextFile, shareText } from "../lib/browserActions";
+import { markdownBarChart, markdownPieChart } from "../lib/markdownCharts";
+import { downloadMarkdownReportPdf, type PdfChart } from "../lib/pdfReports";
 import { useAppState } from "../lib/store";
 import type { DatasetResponse, TrainResult } from "../lib/types";
 
@@ -124,8 +126,23 @@ export function ReportPage() {
     eda: eda.data,
   };
   const handleExportReport = () => {
-    exportFullReport(reportExportData);
-    setNotice("Full Markdown report downloaded.");
+    const markdown = buildFullReportMarkdown(reportExportData);
+    const base = dataset.filename.replace(/\.csv$/i, "").replace(/[^a-z0-9_-]+/gi, "_") || "dataset";
+    downloadTextFile(`${base}_datastory_report.md`, markdown, "text/markdown;charset=utf-8");
+    downloadMarkdownReportPdf({
+      filename: `${base}_datastory_report.pdf`,
+      title: "AI Analysis Report",
+      subtitle: "Structured analysis, modeling results, insights, and recommendations",
+      datasetName: dataset.filename,
+      markdown,
+      metrics: [
+        { label: "Data health", value: `${health}/100` },
+        { label: "Best model", value: bestName },
+        { label: "Best score", value: bestScore },
+      ],
+      charts: buildReportPdfCharts(reportExportData),
+    });
+    setNotice("PDF and editable Markdown reports downloaded.");
   };
 
   const next = () => setActiveSection((value) => Math.min(8, value + 1));
@@ -180,7 +197,7 @@ export function ReportPage() {
                   onClick={async () => {
                     const message = await shareText(
                       `DataStory report for ${dataset.filename}`,
-                      `DataStory report for ${dataset.filename}: ${reportSections[activeSection - 1].title}`,
+                      extractReportSection(buildFullReportMarkdown(reportExportData), activeSection),
                     );
                     setNotice(message);
                   }}
@@ -292,7 +309,10 @@ export function ReportPage() {
 }
 
 function ExecutiveSummary({ health, best, bestName, bestScore, rows, columns, target, taskType }: { health: number; best: TrainResult | null; bestName: string; bestScore: string; rows: number; columns: number; target: string; taskType: string }) {
-  const radarValues = best ? [best.accuracy ?? 0.82, best.precision ?? 0.8, best.recall ?? 0.78, best.f1 ?? 0.8, best.roc_auc ?? 0.84] : [0.72, 0.7, 0.69, 0.71, 0.74];
+  const radarLabels = taskType === "regression" ? ["R2", "MAE Score", "RMSE Score", "CV Stability"] : ["Accuracy", "Precision", "Recall", "Weighted F1", "ROC AUC"];
+  const radarValues = taskType === "regression"
+    ? [normalizeRegressionScore(best?.r2), inverseErrorScore(best?.mae), inverseErrorScore(best?.rmse), inverseErrorScore(best?.cv_score)]
+    : best ? [best.accuracy ?? 0.82, best.precision ?? 0.8, best.recall ?? 0.78, best.f1 ?? 0.8, best.roc_auc ?? 0.84] : [0.72, 0.7, 0.69, 0.71, 0.74];
   return (
     <div className="space-y-5">
       <h2 className="text-xl font-black">1. Executive Summary</h2>
@@ -330,7 +350,7 @@ function ExecutiveSummary({ health, best, bestName, bestScore, rows, columns, ta
         <div className="rounded-xl border border-line p-5">
           <h3 className="font-black">Model Performance Snapshot</h3>
           <Plot
-            data={[{ type: "scatterpolar", r: [...radarValues, radarValues[0]], theta: ["Accuracy", "Precision", "Recall", "Weighted F1", "ROC AUC", "Accuracy"], fill: "toself", line: { color: "#6F8554" } }]}
+            data={[{ type: "scatterpolar", r: [...radarValues, radarValues[0]], theta: [...radarLabels, radarLabels[0]], fill: "toself", line: { color: "#6F8554" } }]}
             layout={{ height: 260, margin: { t: 20, r: 30, b: 20, l: 30 }, paper_bgcolor: "transparent", polar: { radialaxis: { range: [0, 1] } }, showlegend: false }}
             config={{ displayModeBar: false, responsive: true }}
             className="w-full"
@@ -481,7 +501,12 @@ function ModelPerformance({ results, best, bestName, bestScore, taskType }: { re
         </div>
         <div className="rounded-xl border border-line p-5">
           <h3 className="font-black">Best Model Details</h3>
-          {best ? <SimpleRows rows={[
+          {best ? <SimpleRows rows={taskType === "regression" ? [
+            ["RMSE", formatMetric(best.rmse), "Lower prediction error is better"],
+            ["MAE", formatMetric(best.mae), "Average absolute prediction error"],
+            ["R2", formatMetric(best.r2), "Explained variance"],
+            ["CV RMSE", formatMetric(best.cv_score), "Validation error"],
+          ] : [
             ["Weighted F1", formatMetric(best.f1), "Class-balanced summary score"],
             ["Accuracy", formatMetric(best.accuracy), "Correct predictions"],
             ["ROC-AUC", formatMetric(best.roc_auc), "Class separation"],
@@ -489,7 +514,11 @@ function ModelPerformance({ results, best, bestName, bestScore, taskType }: { re
           ]} /> : <EmptyPanel text="Train models to see best model details." />}
         </div>
       </div>
-      <TableCard title="Model Performance Detailed Metrics" rows={results as unknown as Array<Record<string, unknown>>} columns={["model_name", "accuracy", "precision", "recall", "f1", "roc_auc", "rmse", "r2"]} />
+      <TableCard
+        title="Model Performance Detailed Metrics"
+        rows={results as unknown as Array<Record<string, unknown>>}
+        columns={taskType === "regression" ? ["model_name", "mae", "rmse", "r2", "cv_score"] : ["model_name", "accuracy", "precision", "recall", "f1", "roc_auc", "cv_score"]}
+      />
     </div>
   );
 }
@@ -759,6 +788,16 @@ function formatMetric(value?: number | null) {
   return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
+function normalizeRegressionScore(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+function inverseErrorScore(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, 1 / (1 + Math.max(0, value))));
+}
+
 function formatCell(value: unknown) {
   if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(3);
   return String(value ?? "-").slice(0, 42);
@@ -776,7 +815,7 @@ function capitalize(value: string) {
   return value ? value[0].toUpperCase() + value.slice(1) : "Not detected";
 }
 
-function exportFullReport(data: ReportExportData) {
+function buildFullReportMarkdown(data: ReportExportData) {
   const { dataset, target, taskType, results, failedResults, best, bestName, bestScore, health, numericCount, categoricalCount, missingRows, features, eda } = data;
   const profile = dataset.profile;
   const details = profile.column_details ?? [];
@@ -819,6 +858,10 @@ function exportFullReport(data: ReportExportData) {
     `| Boolean columns | ${formatWhole(profile.bool_cols)} |`,
     `| Possible targets | ${profile.possible_targets?.join(", ") || "None detected"} |`,
     "",
+    "### Column Data Types Chart",
+    "",
+    markdownPieChart("Column Data Types", ["Numeric", "Categorical", "Date", "Boolean"], [numericCount, categoricalCount, profile.date_cols ?? 0, profile.bool_cols ?? 0]),
+    "",
     "### Column Snapshot",
     "",
     "| Column | Type | Non-null | Null % | Unique |",
@@ -857,6 +900,17 @@ function exportFullReport(data: ReportExportData) {
         topNumeric.map((item) => `| ${escapeMarkdown(item.column)} | ${formatMetric(item.box.min)} | ${formatMetric(item.box.q1)} | ${formatMetric(item.box.median)} | ${formatMetric(item.box.q3)} | ${formatMetric(item.box.max)} | ${item.box.outliers.toLocaleString()} |`).join("\n")
       : "No numeric EDA profiles are available yet.",
     "",
+    ...(topNumeric[0] ? [
+      `### ${topNumeric[0].column} Distribution Chart`,
+      "",
+      markdownBarChart(
+        `${topNumeric[0].column} Distribution`,
+        topNumeric[0].histogram.bins.slice(0, -1).map((value, index) => `${formatMetric(value)}-${formatMetric(topNumeric[0].histogram.bins[index + 1])}`),
+        topNumeric[0].histogram.counts,
+        "Count",
+      ),
+      "",
+    ] : []),
     "### Categorical Feature Snapshot",
     "",
     topCategorical.length
@@ -866,12 +920,24 @@ function exportFullReport(data: ReportExportData) {
         }).join("\n")
       : "No categorical EDA profiles are available yet.",
     "",
+    ...(topCategorical[0] ? [
+      `### ${topCategorical[0].column} Category Chart`,
+      "",
+      markdownBarChart(`${topCategorical[0].column} Categories`, topCategorical[0].labels, topCategorical[0].counts, "Count"),
+      "",
+    ] : []),
     "### Strongest Numeric Correlations",
     "",
     correlations.length
       ? "| Feature Pair | Correlation |\n| --- | ---: |\n" + correlations.map((item) => `| ${escapeMarkdown(item.pair)} | ${formatMetric(item.value)} |`).join("\n")
       : "No numeric correlation matrix is available.",
     "",
+    ...(correlations.length ? [
+      "### Correlation Strength Chart",
+      "",
+      markdownBarChart("Strongest Absolute Correlations", correlations.map((item) => item.pair), correlations.map((item) => Math.abs(item.value)), "Absolute correlation"),
+      "",
+    ] : []),
     "## 5. Model Performance",
     "",
     best
@@ -879,10 +945,24 @@ function exportFullReport(data: ReportExportData) {
       : "No successful trained model is available.",
     "",
     sortedResults.length
-      ? "| Rank | Model | Primary | Accuracy | Precision | Recall | Weighted F1 | ROC-AUC | MAE | RMSE | R2 |\n| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n" +
-        sortedResults.map((row, index) => `| ${index + 1} | ${escapeMarkdown(displayModel(row.model_name))} | ${formatMetric(primaryExportScore(row, taskType))} | ${formatMetric(row.accuracy)} | ${formatMetric(row.precision)} | ${formatMetric(row.recall)} | ${formatMetric(row.f1)} | ${formatMetric(row.roc_auc)} | ${formatMetric(row.mae)} | ${formatMetric(row.rmse)} | ${formatMetric(row.r2)} |`).join("\n")
+      ? taskType === "regression"
+        ? "| Rank | Model | RMSE | MAE | R2 | CV RMSE |\n| ---: | --- | ---: | ---: | ---: | ---: |\n" +
+          sortedResults.map((row, index) => `| ${index + 1} | ${escapeMarkdown(displayModel(row.model_name))} | ${formatMetric(row.rmse)} | ${formatMetric(row.mae)} | ${formatMetric(row.r2)} | ${formatMetric(row.cv_score)} |`).join("\n")
+        : "| Rank | Model | Weighted F1 | Accuracy | Precision | Recall | ROC-AUC | CV Score |\n| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n" +
+          sortedResults.map((row, index) => `| ${index + 1} | ${escapeMarkdown(displayModel(row.model_name))} | ${formatMetric(row.f1)} | ${formatMetric(row.accuracy)} | ${formatMetric(row.precision)} | ${formatMetric(row.recall)} | ${formatMetric(row.roc_auc)} | ${formatMetric(row.cv_score)} |`).join("\n")
       : "Model leaderboard is empty. Train models from the Modeling page to populate this section.",
     "",
+    ...(sortedResults.length ? [
+      "### Model Comparison Chart",
+      "",
+      markdownBarChart(
+        taskType === "regression" ? "Model RMSE Comparison" : "Model Weighted F1 Comparison",
+        sortedResults.map((row) => displayModel(row.model_name)),
+        sortedResults.map((row) => Number(taskType === "regression" ? row.rmse : row.f1 ?? row.primary_score ?? 0)),
+        taskType === "regression" ? "RMSE" : "Weighted F1",
+      ),
+      "",
+    ] : []),
     failedResults.length ? "### Failed Model Runs" : "",
     ...failedResults.map((row) => `- **${displayModel(row.model_name)}:** ${row.error}`),
     failedResults.length ? "" : "",
@@ -892,6 +972,12 @@ function exportFullReport(data: ReportExportData) {
       ? "| Feature | Relative Importance | Outliers |\n| --- | ---: | ---: |\n" + features.map((feature) => `| ${escapeMarkdown(feature.name)} | ${formatMetric(feature.importance)} | ${feature.outliers.toLocaleString()} |`).join("\n")
       : "Feature insight data is not available yet.",
     "",
+    ...(features.length ? [
+      "### Feature Importance Chart",
+      "",
+      markdownBarChart("Relative Feature Importance", features.map((feature) => feature.name), features.map((feature) => feature.importance), "Relative importance"),
+      "",
+    ] : []),
     "## 7. Recommendations",
     "",
     ...buildRecommendations(data).map((item) => `- ${item}`),
@@ -909,7 +995,60 @@ function exportFullReport(data: ReportExportData) {
     "",
   ];
 
-  downloadTextFile(`${dataset.filename.replace(/\.csv$/i, "")}_datastory_report.md`, lines.join("\n").replace(/\n{3,}/g, "\n\n"));
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function buildReportPdfCharts(data: ReportExportData): PdfChart[] {
+  const charts: PdfChart[] = [];
+  const profile = data.dataset.profile;
+  charts.push({
+    type: "donut",
+    title: "Column Data Types",
+    subtitle: "Generated dataset composition",
+    labels: ["Numeric", "Categorical", "Date", "Boolean"],
+    values: [data.numericCount, data.categoricalCount, profile.date_cols ?? 0, profile.bool_cols ?? 0],
+  });
+  const missing = data.missingRows.filter((row) => row.pct > 0);
+  if (missing.length) charts.push({ type: "bar", title: "Missing Values by Column", subtitle: "Top generated missingness signals", labels: missing.map((row) => row.column), values: missing.map((row) => row.pct), valueSuffix: "%" });
+  const numeric = data.eda?.numeric_profiles?.[0];
+  if (numeric) charts.push({
+    type: "bar",
+    title: `${numeric.column} Distribution`,
+    subtitle: "Histogram from the EDA section",
+    labels: numeric.histogram.bins.slice(0, -1).map((value, index) => `${formatMetric(value)}-${formatMetric(numeric.histogram.bins[index + 1])}`),
+    values: numeric.histogram.counts,
+    horizontal: false,
+  });
+  const categorical = data.eda?.categorical_profiles?.[0];
+  if (categorical) charts.push({ type: "bar", title: `${categorical.column} Categories`, subtitle: "Category counts from the EDA section", labels: categorical.labels.slice(0, 10), values: categorical.counts.slice(0, 10) });
+  const correlation = data.eda?.correlation;
+  if (correlation?.columns?.length && correlation.columns.length > 1) charts.push({ type: "heatmap", title: "Correlation Matrix", subtitle: "Generated numeric correlation view", labels: correlation.columns, values: correlation.values });
+  const sorted = getSortedResults(data.results, data.taskType).slice(0, 8);
+  if (sorted.length) {
+    charts.push({ type: "bar", title: "Model Leaderboard", subtitle: data.taskType === "regression" ? "RMSE - lower is better" : "Weighted F1 - higher is better", labels: sorted.map((row) => displayModel(row.model_name)), values: sorted.map((row) => Number(data.taskType === "regression" ? row.rmse : row.f1 ?? row.primary_score ?? 0)) });
+    charts.push(data.taskType === "regression"
+      ? { type: "grouped", title: "Regression Metric Comparison", labels: sorted.map((row) => displayModel(row.model_name)), series: [
+          { name: "RMSE", values: sorted.map((row) => Number(row.rmse ?? 0)) },
+          { name: "MAE", values: sorted.map((row) => Number(row.mae ?? 0)) },
+          { name: "R2", values: sorted.map((row) => Number(row.r2 ?? 0)) },
+        ] }
+      : { type: "grouped", title: "Classification Metric Comparison", labels: sorted.map((row) => displayModel(row.model_name)), series: [
+          { name: "Accuracy", values: sorted.map((row) => Number(row.accuracy ?? 0)) },
+          { name: "Precision", values: sorted.map((row) => Number(row.precision ?? 0)) },
+          { name: "Recall", values: sorted.map((row) => Number(row.recall ?? 0)) },
+          { name: "F1", values: sorted.map((row) => Number(row.f1 ?? row.primary_score ?? 0)) },
+        ] });
+  }
+  if (data.features.length) charts.push({ type: "bar", title: "Relative Feature Importance", subtitle: "Feature signals shown in the AI report", labels: data.features.map((feature) => feature.name), values: data.features.map((feature) => feature.importance) });
+  return charts;
+}
+
+function extractReportSection(markdown: string, section: number) {
+  const heading = `## ${section}.`;
+  const start = markdown.indexOf(heading);
+  if (start < 0) return markdown.slice(0, 2400);
+  const next = markdown.indexOf(`\n## ${section + 1}.`, start + heading.length);
+  return markdown.slice(start, next < 0 ? undefined : next).slice(0, 4000);
 }
 
 function getSortedResults(results: TrainResult[], taskType: string) {

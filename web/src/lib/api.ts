@@ -42,6 +42,16 @@ export type CleaningConfig = {
   outlier_action?: "None" | "Cap at IQR bounds (1.5x)" | "Remove outlier rows";
   drop_duplicate_columns?: boolean;
   numeric_columns?: string[];
+  categorical_columns?: string[];
+  text_columns?: string[];
+  outlier_columns?: string[];
+  drop_columns?: string[];
+  duplicate_key_columns?: string[];
+  date_columns?: string[];
+  type_columns?: string[];
+  drop_missing_threshold?: number;
+  custom_num_val?: number | string;
+  custom_cat_val?: number | string;
 };
 
 export type CleaningResult = {
@@ -88,7 +98,10 @@ export type EdaResponse = {
   numeric_profiles: Array<{
     column: string;
     histogram: { bins: number[]; counts: number[] };
+    values?: number[];
+    kde?: { x: number[]; y: number[] };
     box: { min: number; q1: number; median: number; q3: number; max: number; outliers: number };
+    stats?: { mean: number; std: number; skew: number; missing: number };
   }>;
   categorical_profiles: Array<{ column: string; labels: string[]; counts: number[] }>;
 };
@@ -97,8 +110,19 @@ export function getEda(datasetId: string) {
   return request<EdaResponse>(`/eda/${datasetId}`);
 }
 
+export type ImbalanceInfo = {
+  imbalanced?: boolean;
+  is_imbalanced?: boolean;
+  class_distribution?: Record<string, number>;
+  class_percentages?: Record<string, number>;
+  minority_class?: string;
+  majority_class?: string;
+  min_percentage?: number;
+  message?: string;
+};
+
 export function selectTarget(datasetId: string, target: string) {
-  return request<{ target: string; task_type: "classification" | "regression"; imbalance_info?: unknown }>(
+  return request<{ target: string; task_type: "classification" | "regression"; imbalance_info?: ImbalanceInfo }>(
     `/select-target/${datasetId}`,
     {
       method: "POST",
@@ -117,7 +141,7 @@ export function trainModels(
   target: string,
   taskType: string,
   modelNames: string[],
-  options?: { testSize?: number; cvFolds?: number },
+  options?: { testSize?: number; cvFolds?: number; imbalanceStrategy?: "none" | "smote" | "class_weight" | null },
 ) {
   return request<{ results: TrainResult[] }>(`/train/${datasetId}`, {
     method: "POST",
@@ -126,9 +150,38 @@ export function trainModels(
       target,
       task_type: taskType,
       model_names: modelNames,
-      imbalance_strategy: null,
+      imbalance_strategy: options?.imbalanceStrategy && options.imbalanceStrategy !== "none" ? options.imbalanceStrategy : null,
       cv_folds: options?.cvFolds ?? 3,
       test_size: options?.testSize ?? 0.2,
+    }),
+  });
+}
+
+export function askDatasetAgent(
+  datasetId: string,
+  question: string,
+  options?: {
+    target?: string;
+    taskType?: string;
+    cleaningActions?: string[];
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+  },
+) {
+  return request<{
+    answer: string;
+    sources: string[];
+    confidence: "high" | "medium" | "low";
+    follow_up_questions: string[];
+    mode: "ai-grounded" | "local-grounded";
+  }>(`/chat/${datasetId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      target: options?.target,
+      task_type: options?.taskType,
+      cleaning_actions: options?.cleaningActions ?? [],
+      history: options?.history ?? [],
     }),
   });
 }
