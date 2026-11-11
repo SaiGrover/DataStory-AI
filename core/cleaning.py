@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
+from core.impact import compute_impact
+
 
 class CleaningError(ValueError):
     """User-readable reason an operation could not run."""
@@ -97,7 +99,7 @@ def impute(df, columns, strategy="median", value=None, n_neighbors=5):
 
 def drop_missing_rows(df, columns=None, how="any"):
     columns = _need(df, columns) if columns else list(df.columns)
-    out = df.dropna(subset=columns, how=how).reset_index(drop=True)
+    out = df.dropna(subset=columns, how=how)
     return out, f"Dropped {len(df) - len(out):,} rows with {how} missing value in {len(columns)} column(s)."
 
 
@@ -120,7 +122,7 @@ def drop_sparse_columns(df, threshold_pct=50.0):
 
 def drop_duplicates(df, columns=None, keep="first"):
     subset = _need(df, columns) if columns else None
-    out = df.drop_duplicates(subset=subset, keep=keep).reset_index(drop=True)
+    out = df.drop_duplicates(subset=subset, keep=keep)
     scope = f"on {', '.join(subset)}" if subset else "across all columns"
     return out, f"Removed {len(df) - len(out):,} duplicate rows ({scope}, keeping the {keep} occurrence)."
 
@@ -256,7 +258,7 @@ def handle_outliers(df, columns, method="iqr", threshold=None, action="cap"):
             raise CleaningError(f"Unknown outlier action '{action}'.")
         notes.append(f"{c}: {n:,} outside [{lo:.4g}, {hi:.4g}]")
     if action == "remove":
-        out = out[~drop].reset_index(drop=True)
+        out = out[~drop]
     if total == 0:
         return out, f"No outliers detected with the {method} method; nothing changed."
     verb = {"cap": "Capped", "null": "Set to missing", "remove": f"Removed {int(drop.sum()):,} rows containing"}[action]
@@ -344,20 +346,36 @@ def snapshot(df: pd.DataFrame) -> dict[str, int]:
             "duplicate_rows": int(df.duplicated().sum()) if len(df) else 0}
 
 
-def cells_changed(before: pd.DataFrame, after: pd.DataFrame) -> int | None:
-    """Count of differing cells when shape and labels are unchanged; otherwise None."""
-    if before.shape != after.shape or list(before.columns) != list(after.columns):
+def cells_changed(before: pd.DataFrame, after: pd.DataFrame) -> int:
+    """Number of cell values that differ on rows and columns present in both frames (null-safe, dtype-aware)."""
+    return compute_impact(before, after)["cells_changed"]
+
+
+def flagged_count(df: pd.DataFrame, op: str, params: dict[str, Any]) -> int | None:
+    """How many values the operation *targets* (e.g. outliers detected), independent of what it changes."""
+    try:
+        cols = [c for c in (params.get("columns") or []) if c in df.columns]
+        if op == "handle_outliers":
+            return int(sum(int(outlier_mask(df[c], params.get("method", "iqr"), params.get("threshold"))[0].sum()) for c in cols))
+        if op == "impute":
+            return int(df[cols].isna().sum().sum()) if cols else 0
+        if op == "drop_duplicates":
+            return int(df.duplicated(subset=cols or None, keep=params.get("keep", "first")).sum())
+        if op == "drop_missing_rows":
+            sub = df[cols] if cols else df
+            how = params.get("how", "any")
+            return int((sub.isna().any(axis=1) if how == "any" else sub.isna().all(axis=1)).sum())
+    except Exception:  # noqa: BLE001 - informational only
         return None
-    na_a, na_b = before.isna().to_numpy(), after.isna().to_numpy()
-    # compare via string form, with missing values blanked out so NA comparisons never raise
-    a = before.astype(object).where(~na_a, "").astype(str).to_numpy()
-    b = after.astype(object).where(~na_b, "").astype(str).to_numpy()
-    diff = ((a != b) & ~na_a & ~na_b) | (na_a != na_b)
-    return int(diff.sum())
+    return None
 
 
 def preview_operation(df: pd.DataFrame, op: str, params: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Run an operation on a copy and return (result, record). Never mutates ``df``."""
+    """Run an operation on a copy and return (result, record). Never mutates ``df``.
+
+    The record's ``impact`` comes from comparing the two frames (core.impact), so the
+    preview and the applied result report identical numbers.
+    """
     if op not in OPERATIONS:
         raise CleaningError(f"Unknown operation '{op}'.")
     if df.empty:
@@ -371,18 +389,17 @@ def preview_operation(df: pd.DataFrame, op: str, params: dict[str, Any]) -> tupl
         raise CleaningError(f"{label} failed: {exc}") from exc
     if new_df.empty or new_df.shape[1] == 0:
         raise CleaningError(f"{label} would leave the dataset empty, so it was not applied.")
+    imp = compute_impact(df, new_df)
     record = {
         "operation": op, "label": label, "params": _jsonable(params), "detail": detail,
         "before": snapshot(df), "after": snapshot(new_df),
-        "cells_changed": cells_changed(df, new_df),
-        "columns_added": [c for c in new_df.columns if c not in df.columns],
-        "columns_removed": [c for c in df.columns if c not in new_df.columns],
+        "impact": imp, "flagged": flagged_count(df, op, params),
+        "cells_changed": imp["cells_changed"],
+        "columns_added": imp["columns_added"], "columns_removed": imp["columns_removed"],
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
-    record["changed"] = bool(
-        record["before"] != record["after"] or record["cells_changed"] or record["columns_added"]
-        or record["columns_removed"] or not df.dtypes.astype(str).equals(new_df.dtypes.astype(str))
-    )
+    record["changed"] = bool(imp["cells_changed"] or imp["rows_removed"] or imp["rows_added"] or imp["columns_added"]
+                             or imp["columns_removed"] or imp["dtype_changes"])
     return new_df, record
 
 

@@ -16,11 +16,16 @@ OUTLIER_METHOD = (
 )
 _ID_NAME = re.compile(r"(^|[_\s])(id|uuid|guid|key|index)($|[_\s])|id$", re.IGNORECASE)
 _DATE_HINT = re.compile(r"\d[-/:.]\d")
+_MONTH_HINT = re.compile(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b|"
+                         r"\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+\d{4}\b", re.IGNORECASE)
+_ID_VALUE = re.compile(r"^[A-Za-z]{0,4}[-_]?\d+$")
 
 
 def _looks_like_datetime(s: pd.Series) -> bool:
-    sample = s.dropna().astype(str).head(200)
-    if sample.empty or not sample.str.contains(_DATE_HINT).mean() > 0.9:
+    sample = s.dropna().astype(str).str.strip().head(200)
+    if sample.empty:
+        return False
+    if not (sample.str.contains(_DATE_HINT).mean() > 0.9 or sample.str.contains(_MONTH_HINT).mean() > 0.9):
         return False
     try:
         parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
@@ -51,6 +56,20 @@ def column_kind(s: pd.Series) -> str:
     return "categorical"
 
 
+def multi_value_separator(s: pd.Series) -> str | None:
+    """Return ", " when a text column holds comma-separated lists (e.g. 'United States, India')."""
+    x = s.dropna().astype(str).head(2000)
+    if len(x) < 20:
+        return None
+    has = x.str.contains(", ", regex=False)
+    if has.mean() < 0.1:
+        return None
+    tokens = x.str.split(", ").explode().str.strip()
+    if tokens.nunique() >= 0.5 * len(tokens) or tokens.str.len().mean() > 40:
+        return None
+    return ", "
+
+
 def infer_kinds(df: pd.DataFrame) -> dict[str, str]:
     return {c: column_kind(df[c]) for c in df.columns}
 
@@ -73,7 +92,12 @@ def count_outliers(s: pd.Series) -> int | None:
 
 
 def _is_id_candidate(name: str, s: pd.Series, kind: str, n_rows: int) -> bool:
-    if n_rows < 20 or s.isna().any() or s.nunique() != n_rows:
+    if n_rows < 20:
+        return False
+    non_null = s.dropna()
+    if kind in ("categorical", "text") and len(non_null) and non_null.nunique() >= 0.98 * len(non_null)             and non_null.astype(str).str.match(_ID_VALUE).mean() > 0.95 and len(non_null) >= 0.95 * n_rows:
+        return True  # codes such as s1, s2, … or INV-0001
+    if s.isna().any() or s.nunique() != n_rows:
         return False
     if kind == "numeric":
         if not ptypes.is_integer_dtype(s):
