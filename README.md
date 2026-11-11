@@ -125,8 +125,8 @@ Optionally, a [Groq](https://console.groq.com) model can rephrase answers and wr
 
 ```toml
 GROQ_API_KEY = "gsk_your-key-here"
-# optional — any Groq chat model ID (default: llama-3.3-70b-versatile)
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# optional — any Groq chat model ID (default: openai/gpt-oss-120b)
+GROQ_MODEL = "openai/gpt-oss-120b"
 ```
 
 When a key is set, the Insights and Agent pages show **"LLM connected · <model>"**. Free-tier rate limits apply; if one is hit, the app shows the verified rule-based answer and says why.

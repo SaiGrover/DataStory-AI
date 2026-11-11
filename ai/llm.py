@@ -13,7 +13,8 @@ from dataclasses import dataclass
 import requests
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+REASONING_HEADROOM = 1024  # extra completion tokens so gpt-oss's hidden reasoning cannot crowd out the answer
 _ERRORS = {
     401: "Groq rejected the API key (HTTP 401). Check GROQ_API_KEY.",
     404: "Groq does not recognise the configured model (HTTP 404). Check GROQ_MODEL.",
@@ -59,12 +60,17 @@ def chat(messages: list[dict[str, str]], max_tokens: int = 500, temperature: flo
     cfg = config or get_config()
     if cfg is None:
         raise LLMError("GROQ_API_KEY is not configured.")
+    payload: dict = {"model": cfg.model, "messages": messages, "temperature": temperature,
+                     "max_completion_tokens": max_tokens}
+    if cfg.model.startswith("openai/gpt-oss"):
+        # reasoning model: keep thinking short, return only the final answer, leave room for both
+        payload.update(reasoning_effort="low", include_reasoning=False,
+                       max_completion_tokens=max_tokens + REASONING_HEADROOM)
     try:
         r = requests.post(
             f"{cfg.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"},
-            json={"model": cfg.model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-            timeout=45,
+            json=payload, timeout=60,
         )
     except requests.RequestException as exc:
         raise LLMError(f"Groq could not be reached ({type(exc).__name__}).") from exc

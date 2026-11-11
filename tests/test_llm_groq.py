@@ -41,8 +41,12 @@ def test_config_and_request_target_groq(groq_env, monkeypatch):
     assert llm.chat([{"role": "user", "content": "hi"}]) == "hello"
     assert calls[0]["url"] == "https://api.groq.com/openai/v1/chat/completions"
     assert calls[0]["headers"]["Authorization"] == "Bearer gsk_test"
-    monkeypatch.setenv("GROQ_MODEL", "llama-3.1-8b-instant")
-    assert llm.get_config().model == "llama-3.1-8b-instant"
+    body = calls[0]["json"]
+    assert body["model"] == "openai/gpt-oss-120b"
+    assert body["reasoning_effort"] == "low" and body["include_reasoning"] is False
+    assert body["max_completion_tokens"] == 500 + llm.REASONING_HEADROOM
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-20b")
+    assert llm.get_config().model == "openai/gpt-oss-20b"
 
 
 @pytest.mark.parametrize("status,needle", [(401, "API key"), (429, "rate limit"), (500, "HTTP 500")])
