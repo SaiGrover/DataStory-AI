@@ -81,9 +81,11 @@ html[data-ds-theme="light"]{%(light)s}
   box-shadow:0 0 30px -10px var(--ds-glow),inset 0 1px 0 rgba(255,255,255,.08)}
 .ds-mark::before{content:"";position:absolute;inset:-5px;border-radius:20px;z-index:-1;
   background:conic-gradient(from 0deg,var(--ds-c-sage),var(--ds-c-teal),var(--ds-c-amber),var(--ds-c-olive),var(--ds-c-sage));
-  filter:blur(12px);opacity:.28;animation:ds-spin 9s linear infinite}
-.ds-mark svg{width:32px;height:32px;overflow:visible}
-.ds-mark .ring{transform-origin:24px 24px;animation:ds-spin 17s linear infinite}
+  filter:blur(12px);opacity:.22;animation:ds-spin 9s linear infinite}
+.ds-mark .glyph{position:absolute;inset:7px;background:url("data:image/svg+xml,%%3Csvg%%20xmlns%%3D%%27http%%3A//www.w3.org/2000/svg%%27%%20viewBox%%3D%%270%%200%%2048%%2048%%27%%20fill%%3D%%27none%%27%%20stroke-linecap%%3D%%27round%%27%%3E%%3Cpath%%20d%%3D%%27M17%%2030v-5%%27%%20stroke%%3D%%27%%235E7845%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M24%%2030V17%%27%%20stroke%%3D%%27%%234F7C8A%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M31%%2030v-9%%27%%20stroke%%3D%%27%%23B97F2E%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M14%%2033h20%%27%%20stroke%%3D%%27%%235E7845%%27%%20stroke-opacity%%3D%%27.55%%27%%20stroke-width%%3D%%271.6%%27/%%3E%%3C/svg%%3E") center/contain no-repeat}.ds-mark .orbit{position:absolute;inset:4px;background:url("data:image/svg+xml,%%3Csvg%%20xmlns%%3D%%27http%%3A//www.w3.org/2000/svg%%27%%20viewBox%%3D%%270%%200%%2048%%2048%%27%%20fill%%3D%%27none%%27%%20stroke-linecap%%3D%%27round%%27%%3E%%3Ccircle%%20cx%%3D%%2724%%27%%20cy%%3D%%2724%%27%%20r%%3D%%2719%%27%%20stroke%%3D%%27%%234F7C8A%%27%%20stroke-width%%3D%%272.3%%27%%20stroke-dasharray%%3D%%2730%%2014%%27/%%3E%%3Ccircle%%20cx%%3D%%2724%%27%%20cy%%3D%%2724%%27%%20r%%3D%%2719%%27%%20stroke%%3D%%27%%23B97F2E%%27%%20stroke-width%%3D%%272.3%%27%%20stroke-dasharray%%3D%%2712%%2032%%27%%20stroke-dashoffset%%3D%%2722%%27/%%3E%%3C/svg%%3E") center/contain no-repeat;animation:ds-spin 17s linear infinite}html[data-ds-theme="dark"] .ds-mark .glyph{background-image:url("data:image/svg+xml,%%3Csvg%%20xmlns%%3D%%27http%%3A//www.w3.org/2000/svg%%27%%20viewBox%%3D%%270%%200%%2048%%2048%%27%%20fill%%3D%%27none%%27%%20stroke-linecap%%3D%%27round%%27%%3E%%3Cpath%%20d%%3D%%27M17%%2030v-5%%27%%20stroke%%3D%%27%%239DBB7C%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M24%%2030V17%%27%%20stroke%%3D%%27%%2373A6B4%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M31%%2030v-9%%27%%20stroke%%3D%%27%%23E0A75A%%27%%20stroke-width%%3D%%273%%27/%%3E%%3Cpath%%20d%%3D%%27M14%%2033h20%%27%%20stroke%%3D%%27%%239DBB7C%%27%%20stroke-opacity%%3D%%27.55%%27%%20stroke-width%%3D%%271.6%%27/%%3E%%3C/svg%%3E")}html[data-ds-theme="dark"] .ds-mark .orbit{background-image:url("data:image/svg+xml,%%3Csvg%%20xmlns%%3D%%27http%%3A//www.w3.org/2000/svg%%27%%20viewBox%%3D%%270%%200%%2048%%2048%%27%%20fill%%3D%%27none%%27%%20stroke-linecap%%3D%%27round%%27%%3E%%3Ccircle%%20cx%%3D%%2724%%27%%20cy%%3D%%2724%%27%%20r%%3D%%2719%%27%%20stroke%%3D%%27%%2373A6B4%%27%%20stroke-width%%3D%%272.3%%27%%20stroke-dasharray%%3D%%2730%%2014%%27/%%3E%%3Ccircle%%20cx%%3D%%2724%%27%%20cy%%3D%%2724%%27%%20r%%3D%%2719%%27%%20stroke%%3D%%27%%23E0A75A%%27%%20stroke-width%%3D%%272.3%%27%%20stroke-dasharray%%3D%%2712%%2032%%27%%20stroke-dashoffset%%3D%%2722%%27/%%3E%%3C/svg%%3E")}
+.ds-mark .ring{stroke:var(--ds-c-teal);transform-origin:24px 24px;animation:ds-spin 17s linear infinite}
+.ds-mark .b1{stroke:var(--ds-c-sage)}.ds-mark .b2{stroke:var(--ds-c-teal)}.ds-mark .b3{stroke:var(--ds-c-amber)}
+.ds-mark .base{stroke:var(--ds-c-sage);stroke-opacity:.55}
 .ds-mark .bars{animation:ds-pulse 3.2s ease-in-out infinite}
 @keyframes ds-spin{to{transform:rotate(360deg)}}
 @keyframes ds-pulse{0%%,100%%{opacity:.75}50%%{opacity:1}}
@@ -357,18 +359,13 @@ div[data-testid="stCaptionContainer"] p{color:var(--ds-text-3)!important;font-si
 [data-testid="stPlotlyChart"]{border-radius:var(--ds-radius);background:var(--ds-surface);border:1px solid var(--ds-border);padding:6px 6px 2px}
 @media (max-width: 860px){.ds-title{font-size:1.45rem}.hero-title{font-size:2.1rem}}
 @media (prefers-reduced-motion: reduce){
-  .st-key-ds_header::after,.ds-mark::before,.ds-mark .ring,.ds-mark .bars,.ds-brand .w{animation:none!important}
+  .st-key-ds_header::after,.ds-mark::before,.ds-mark .orbit,.ds-brand .w{animation:none!important}
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
 </style>
 """ % {"light": _vars("light"), "dark": _vars("dark")}
 
-MARK = ('<div class="ds-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="dsg" x1="0%" y1="0%" x2="100%" y2="100%">'
-        '<stop offset="0%" stop-color="var(--ds-c-sage)"/><stop offset="55%" stop-color="var(--ds-c-teal)"/>'
-        '<stop offset="100%" stop-color="var(--ds-c-amber)"/></linearGradient></defs>'
-        '<circle class="ring" cx="24" cy="24" r="19" fill="none" stroke="url(#dsg)" stroke-width="2.3" stroke-linecap="round" stroke-dasharray="30 14"/>'
-        '<g class="bars" stroke="url(#dsg)" stroke-width="3" stroke-linecap="round"><path d="M17 30v-5"/><path d="M24 30V17"/><path d="M31 30v-9"/></g>'
-        '<path d="M14 33h20" stroke="var(--ds-c-sage)" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round"/></svg></div>')
+MARK = '<div class="ds-mark" aria-hidden="true"><span class="orbit"></span><span class="glyph"></span></div>'
 
 LOGO = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
         'stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V7"/><path d="M18 17v-8"/></svg>')
