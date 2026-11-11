@@ -1,7 +1,8 @@
-"""Optional LLM access through any OpenAI-compatible chat-completions endpoint.
+"""Optional LLM access through Groq's OpenAI-compatible chat-completions API.
 
-Configuration comes from environment variables or Streamlit secrets; keys are
-never written to disk, logged, or echoed to the UI.
+Set ``GROQ_API_KEY`` (environment variable or Streamlit secret) to enable it.
+``GROQ_MODEL`` picks a different Groq model. Keys are never written to disk,
+logged, or echoed to the UI.
 """
 from __future__ import annotations
 
@@ -11,11 +12,14 @@ from dataclasses import dataclass
 
 import requests
 
-_PROVIDERS = [  # (key variable, default base URL, default model)
-    ("DATASTORY_LLM_API_KEY", "https://openrouter.ai/api/v1", "mistralai/mistral-7b-instruct"),
-    ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1", "mistralai/mistral-7b-instruct"),
-    ("OPENAI_API_KEY", "https://api.openai.com/v1", "gpt-4o-mini"),
-]
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
+_ERRORS = {
+    401: "Groq rejected the API key (HTTP 401). Check GROQ_API_KEY.",
+    404: "Groq does not recognise the configured model (HTTP 404). Check GROQ_MODEL.",
+    413: "The request was too large for the Groq model (HTTP 413).",
+    429: "Groq's rate limit was reached (HTTP 429); free-tier limits reset within a minute.",
+}
 
 
 class LLMError(RuntimeError):
@@ -43,23 +47,18 @@ def _setting(name: str) -> str:
 
 
 def get_config() -> LLMConfig | None:
-    for key_var, base, model in _PROVIDERS:
-        key = _setting(key_var)
-        if key:
-            return LLMConfig(
-                api_key=key,
-                base_url=(_setting("DATASTORY_LLM_BASE_URL") or base).rstrip("/"),
-                model=_setting("DATASTORY_LLM_MODEL") or _setting("OPENROUTER_MODEL") or model,
-                source=key_var,
-            )
-    return None
+    key = _setting("GROQ_API_KEY")
+    if not key:
+        return None
+    return LLMConfig(api_key=key, base_url=GROQ_BASE_URL, model=_setting("GROQ_MODEL") or DEFAULT_MODEL,
+                     source="GROQ_API_KEY")
 
 
 def chat(messages: list[dict[str, str]], max_tokens: int = 500, temperature: float = 0.2,
          config: LLMConfig | None = None) -> str:
     cfg = config or get_config()
     if cfg is None:
-        raise LLMError("No LLM API key is configured.")
+        raise LLMError("GROQ_API_KEY is not configured.")
     try:
         r = requests.post(
             f"{cfg.base_url}/chat/completions",
@@ -68,13 +67,16 @@ def chat(messages: list[dict[str, str]], max_tokens: int = 500, temperature: flo
             timeout=45,
         )
     except requests.RequestException as exc:
-        raise LLMError(f"The LLM provider could not be reached ({type(exc).__name__}).") from exc
+        raise LLMError(f"Groq could not be reached ({type(exc).__name__}).") from exc
     if r.status_code != 200:
-        raise LLMError(f"The LLM provider returned HTTP {r.status_code}.")
+        raise LLMError(_ERRORS.get(r.status_code, f"Groq returned HTTP {r.status_code}."))
     try:
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, ValueError, AttributeError) as exc:
-        raise LLMError("The LLM provider returned an unexpected response.") from exc
+        text = (r.json()["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, ValueError, AttributeError, TypeError) as exc:
+        raise LLMError("Groq returned an unexpected response.") from exc
+    if not text:
+        raise LLMError("Groq returned an empty answer.")
+    return text
 
 
 _NUM = re.compile(r"(?<![\w.])[-+−]?\d[\d,]*(?:\.\d+)?")

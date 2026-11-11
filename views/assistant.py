@@ -23,7 +23,7 @@ if cfg:
 else:
     st.html('<span class="ds-pill muted">Rule-based mode</span> '
             '<span style="font-size:.85rem;color:#697468">No LLM key configured. The assistant answers by retrieving the relevant computed facts. '
-            'Set OPENROUTER_API_KEY or OPENAI_API_KEY to enable conversational phrasing.</span>')
+            'Add GROQ_API_KEY to the app secrets to enable conversational phrasing.</span>')
 
 r = state.results()
 chat = st.session_state["chat"]
