@@ -123,6 +123,8 @@ def prepare_features(df: pd.DataFrame, target: str, features: list[str] | None =
     if not features:
         raise ModelingError("Select at least one feature column.")
     keep = df[target].notna()
+    if int(keep.sum()) < MIN_ROWS:
+        raise ModelingError(f"Only {int(keep.sum())} rows have a target value; at least {MIN_ROWS} are needed.")
     data = df.loc[keep]
     kinds = infer_kinds(data[features])
     X = pd.DataFrame(index=data.index)

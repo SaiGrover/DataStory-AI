@@ -348,9 +348,11 @@ def cells_changed(before: pd.DataFrame, after: pd.DataFrame) -> int | None:
     """Count of differing cells when shape and labels are unchanged; otherwise None."""
     if before.shape != after.shape or list(before.columns) != list(after.columns):
         return None
-    a, b = before.astype(object), after.astype(object)
-    both_na = before.isna().to_numpy() & after.isna().to_numpy()
-    diff = (a.to_numpy() != b.to_numpy()) & ~both_na
+    na_a, na_b = before.isna().to_numpy(), after.isna().to_numpy()
+    # compare via string form, with missing values blanked out so NA comparisons never raise
+    a = before.astype(object).where(~na_a, "").astype(str).to_numpy()
+    b = after.astype(object).where(~na_b, "").astype(str).to_numpy()
+    diff = ((a != b) & ~na_a & ~na_b) | (na_a != na_b)
     return int(diff.sum())
 
 
