@@ -9,7 +9,15 @@ APP = str(Path(__file__).resolve().parents[1] / "app.py")
 
 
 def _links(at):
-    return {p.proto.label: p.proto for p in at.get("page_link")}
+    """Map each stage's short label to its link (rail labels read 'Step NN  **Label**  *metric*')."""
+    import re
+
+    out = {}
+    for p in at.get("page_link"):
+        m = re.search(r"\*\*(.+?)\*\*", p.proto.label)
+        name = m.group(1) if m else p.proto.label.split(" · ")[0]
+        out.setdefault(name, p.proto)
+    return out
 
 
 def _app():

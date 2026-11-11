@@ -23,6 +23,7 @@ current = st.navigation(pages, position="hidden")
 
 navigation.header(pages)
 navigation.flowchart(pages, current)
+navigation.ask_dock(pages, current)
 
 try:
     current.run()

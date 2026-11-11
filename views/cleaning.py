@@ -173,18 +173,42 @@ st.dataframe(pd.DataFrame([{"": "Original", **o}, {"": "Current", **cur},
     columns={"rows": "Rows", "columns": "Columns", "missing_cells": "Missing cells", "duplicate_rows": "Duplicate rows"}),
     width="stretch", hide_index=True)
 
-st.subheader("Transformation history")
+ui.section("Transformation pipeline", sub="every applied step, in order, with its measured impact")
 hist = r["cleaning"]["history"]
 if not hist:
-    ui.callout("No transformations applied. The working dataset is identical to the original.", "na")
+    ui.callout("No transformations applied. The working dataset is identical to the original (v0).", "na")
 else:
-    st.dataframe(pd.DataFrame([{
-        "#": i, "Operation": h["label"], "What changed": h["detail"],
-        "Rows": f"{h['before']['rows']:,} → {h['after']['rows']:,}",
-        "Missing cells": f"{h['before']['missing_cells']:,} → {h['after']['missing_cells']:,}",
-        "Values modified": (h.get("impact") or {}).get("cells_changed", h.get("cells_changed")),
-        "Rows removed": (h.get("impact") or {}).get("rows_removed"), "Applied": h["timestamp"],
-    } for i, h in enumerate(hist, 1)]), width="stretch", hide_index=True)
+    left_f, right_f = st.columns([1.35, 1], gap="large")
+    with left_f:
+        steps = []
+        for i, h in enumerate(hist, 1):
+            imp = h.get("impact") or {}
+            chips = [f"v{i}"]
+            if imp.get("cells_changed"):
+                chips.append(f"{imp['cells_changed']:,} values modified")
+            if imp.get("rows_removed"):
+                chips.append(f"{imp['rows_removed']:,} rows removed")
+            if imp.get("columns_removed") or imp.get("columns_added"):
+                chips.append(f"{len(imp.get('columns_removed', []))} cols removed / {len(imp.get('columns_added', []))} added")
+            if imp.get("missing_resolved"):
+                chips.append(f"{imp['missing_resolved']:,} missing resolved")
+            steps.append((h["label"], h["detail"], chips))
+        ui.method_flow(steps)
+    with right_f:
+        o, cur = r["cleaning"]["original"], r["cleaning"]["current"]
+        ui.io_panel(
+            [("Original (v0)", f"{o['rows']:,} × {o['columns']}"), ("Missing cells", f"{o['missing_cells']:,}"),
+             ("Duplicate rows", f"{o['duplicate_rows']:,}")],
+            f"{len(hist)}-step cleaning pipeline",
+            [(f"Active ({state.data_version()})", f"{cur['rows']:,} × {cur['columns']}"), ("Missing cells", f"{cur['missing_cells']:,}"),
+             ("Duplicate rows", f"{cur['duplicate_rows']:,}")],
+            "Counts computed from both versions on this page load. The original is never modified.")
+    with st.expander("History table"):
+        st.dataframe(pd.DataFrame([{
+            "#": i, "Operation": h["label"], "What changed": h["detail"],
+            "Values modified": (h.get("impact") or {}).get("cells_changed", h.get("cells_changed")),
+            "Rows removed": (h.get("impact") or {}).get("rows_removed"), "Applied": h["timestamp"],
+        } for i, h in enumerate(hist, 1)]), width="stretch", hide_index=True)
     st.caption("History records what changed in the data. Whether a step helps a model is only known after retraining and comparing scores.")
 
 c1, c2, c3 = st.columns(3)

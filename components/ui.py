@@ -20,8 +20,51 @@ def page_header(eyebrow: str, title: str, subtitle: str) -> None:
             f'<div class="ds-sub">{html.escape(subtitle)}</div>')
 
 
-def section(title: str, note: str | None = None) -> None:
-    st.html(f'<div class="ds-section">{html.escape(title)}' + (f'<span class="n">{html.escape(note)}</span>' if note else "") + "</div>")
+def section(title: str, note: str | None = None, sub: str | None = None) -> None:
+    """Eyebrow section header with the gradient rule (inspired by the Data Vortex dashboard)."""
+    st.html(f'<div class="ds-section"><h3>{html.escape(title)}</h3>'
+            + (f'<span class="n">{html.escape(note)}</span>' if note else "")
+            + (f'<span class="s">{html.escape(sub)}</span>' if sub else "") + "</div>")
+
+
+ACCENTS = ("sage", "teal", "amber", "olive", "clay", "moss")
+
+
+def tiles(items: list[tuple[str, str, str, str]]) -> None:
+    """KPI tiles: (label, value, note, accent) where accent is one of ACCENTS. Values must be computed by the caller."""
+    out = ['<div class="ds-tiles">']
+    for label, value, note, accent in items:
+        c = accent if accent in ACCENTS else "sage"
+        out.append(f'<div class="ds-tile" style="--c:var(--ds-c-{c})"><div class="l">{html.escape(label)}</div>'
+                   f'<div class="v" title="{html.escape(str(value))}">{html.escape(str(value))}</div>'
+                   f'<div class="n">{html.escape(note)}</div></div>')
+    st.html("".join(out) + "</div>")
+
+
+def method_flow(steps: list[tuple[str, str, list[str]]], accent: str = "amber", last_accent: str = "moss") -> None:
+    """Vertical numbered pipeline: (title, body, chips)."""
+    n = len(steps)
+    out = ['<div class="ds-mflow">']
+    for i, (title, body, chips) in enumerate(steps):
+        c = last_accent if i == n - 1 else accent
+        out.append(f'<div class="step" style="--c:var(--ds-c-{c})"><div class="node">{i + 1:02d}</div><div class="sbody">'
+                   f'<h5>{html.escape(title)}</h5><p>{html.escape(body)}</p>'
+                   + "".join(f'<span class="ds-chip">{html.escape(x)}</span>' for x in chips) + "</div></div>")
+    st.html("".join(out) + "</div>")
+
+
+def io_panel(consumed: list[tuple[str, str]], engine: str, produced: list[tuple[str, str]], note: str,
+             accent: str = "amber", out_accent: str = "moss") -> None:
+    """Artefacts panel: what went in, what ran, what came out."""
+    def rows(items):
+        return "".join(f'<div class="row"><span>{html.escape(a)}</span><span>{html.escape(b)}</span></div>' for a, b in items)
+    st.html(f'<div class="ds-io"><div class="h">Artefacts</div>'
+            f'<div class="k" style="--c:var(--ds-c-{accent})">Consumed</div>{rows(consumed)}'
+            f'<div class="arrow" style="--c:var(--ds-c-{accent})">&#8595;</div>'
+            f'<div class="engine" style="--c:var(--ds-c-{accent})">{html.escape(engine)}</div>'
+            f'<div class="arrow" style="--c:var(--ds-c-{out_accent})">&#8595;</div>'
+            f'<div class="k" style="--c:var(--ds-c-{out_accent})">Produced</div>{rows(produced)}'
+            f'<div class="f">{html.escape(note)}</div></div>')
 
 
 def callout(text: str, kind: str = "read") -> None:
@@ -94,7 +137,12 @@ def themed(fig: Any) -> Any:
     return fig
 
 
-def chart(fig: Any, key: str | None = None) -> None:
+def chart(fig: Any, key: str | None = None, card: bool = False) -> None:
+    if card:
+        with st.container(key=f"card_{key or id(fig)}"):
+            st.plotly_chart(themed(fig), width="stretch", theme=None, key=key,
+                            config={"displaylogo": False, "toImageButtonOptions": {"format": "png", "scale": 2}})
+        return
     st.plotly_chart(themed(fig), width="stretch", theme=None, key=key,
                     config={"displaylogo": False, "toImageButtonOptions": {"format": "png", "scale": 2}})
 
@@ -113,6 +161,12 @@ def spec_chart(spec_dict: dict[str, Any], key: str, title: str | None = None, so
     except Exception as exc:  # noqa: BLE001
         st.error(f"This chart could not be computed: {exc}")
         return None
+    with st.container(key=f"card_{key}"):
+        _chart_body(spec, out, key, title, source, show_table, toolbar)
+    return out
+
+
+def _chart_body(spec: Any, out: Any, key: str, title: str | None, source: str, show_table: bool, toolbar: bool) -> None:
     chart(out.figure, f"fig_{key}")
     for n in out.notes:
         st.caption(n)
@@ -120,7 +174,6 @@ def spec_chart(spec_dict: dict[str, Any], key: str, title: str | None = None, so
     if toolbar:
         chart_toolbar(spec, out, key, title or (out.figure.layout.title.text if out.figure.layout.title else spec.describe()), source,
                       show_table)
-    return out
 
 
 def chart_toolbar(spec: Any, out: Any, key: str, title: str, source: str, show_table: bool = True) -> None:

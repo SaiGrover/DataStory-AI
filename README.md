@@ -84,6 +84,16 @@ views/                     one file per page (dataset, quality, cleaning, compar
   - Light mode keeps the warm-ivory and sage identity. Dark mode uses deep charcoal surfaces, desaturated sage accents and warm off-white text.
   - The sun/moon toggle in the header stores the choice in the key Streamlit itself reads and reloads the page.
   - The reload starts a new Streamlit session, so the current analysis is parked in server memory under a one-time random token and claimed straight back. The token expires after 2 minutes and nothing is written to disk.
+- **Dashboard language (inspired by Team Entropy's Data Vortex dashboard, re-coloured with DataStory's palette):**
+  - an animated brand mark (rotating dashed ring around the bar-chart glyph), a slowly flowing gradient wordmark and a sweeping gradient rule under the header;
+  - a sticky, blurred **pipeline rail**: each stage is a card with its step number, name and a live computed metric (rows, health, cleaning steps, saved charts, findings, best score, answers), a stage-coloured accent strip, a glowing active state and arrows between stages;
+  - KPI **tiles** with accent strips and coloured values (and `st.metric` styled the same way);
+  - charts in uniform **cards** with the interpretation and toolbar inside;
+  - **eyebrow** section headers with a gradient rule, small uppercase widget labels;
+  - a vertical numbered **method flow** with an *Artefacts* panel (consumed → pipeline → produced) for the cleaning pipeline;
+  - a floating **Ask the copilot** button.
+  
+  Stage accents (sage, teal, amber, olive, clay, moss) come from the existing DataStory chart palette, with lighter variants in dark mode; the light theme's ivory/sage identity is unchanged.
 - **Flowchart navigation:**
   - The workflow is a connected chain of native `st.page_link` nodes: Dataset → Health → Clean → Explore → Insights → Model → Results → Agent → Report, with Compare and Segments as optional branches.
   - Each node sits in a keyed container whose key encodes its state (`active`, `done`, `todo`, `locked`). Connectors, arrowheads and the travelling highlight on completed or active links are pure CSS on those containers. Nothing manipulates Streamlit's internal DOM, and clicks always navigate through Streamlit.

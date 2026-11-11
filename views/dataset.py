@@ -159,15 +159,18 @@ def _overview() -> None:
     for note in m.notes:
         st.info(note, icon=":material/info:")
 
-    ui.section("Dataset snapshot")
+    ui.section("Dataset snapshot", sub="computed from the active version on this page load")
     h = r["quality"]["health"]
-    c = st.columns(6)
-    c[0].metric("Rows", f"{p['rows']:,}")
-    c[1].metric("Columns", f"{p['columns']:,}")
-    c[2].metric("Missing cells", f"{p['missing_cells']:,}", help=f"{pct(p['missing_pct'], 2)} of all {p['cells']:,} cells")
-    c[3].metric("Duplicate rows", f"{p['duplicate_rows']:,}", help=f"{pct(p['duplicate_pct'], 2)} of rows")
-    c[4].metric("Health score", "n/a" if h.get("value") is None else f"{h['value']:.0f}/100", help=h.get("formula"))
-    c[5].metric("Version", state.data_version(), help="v0 is the original upload; each applied cleaning step adds a version.")
+    kc = p["kind_counts"]
+    ui.tiles([
+        ("Rows", f"{p['rows']:,}", f"{p['memory_mb']:.1f} MB in memory", "sage"),
+        ("Columns", f"{p['columns']:,}", f"{kc['numeric']} numeric · {kc['categorical']} categorical · {kc['datetime']} date · {kc['text']} text", "teal"),
+        ("Missing cells", f"{p['missing_cells']:,}", f"{pct(p['missing_pct'], 2)} of {p['cells']:,} cells", "amber"),
+        ("Duplicate rows", f"{p['duplicate_rows']:,}", f"{pct(p['duplicate_pct'], 2)} of rows", "clay"),
+        ("Health score", "n/a" if h.get("value") is None else f"{h['value']:.0f}/100",
+         "weighted, documented formula" if h.get("value") is not None else "no dimension evaluated", "olive"),
+        ("Version", state.data_version(), f"{len(r['cleaning']['history'])} cleaning step(s) applied", "moss"),
+    ])
     st.html(f'<div class="ds-meta">Provenance: <b>{html.escape(r["lineage"]["active_label"])}</b> · source file '
             f'{html.escape(str(m.original_filename or m.name))} · sha256 {html.escape((m.file_hash or "")[:16])}… · loaded {html.escape(m.loaded_at)}'
             + (f' · licence {html.escape(m.license)}' if m.license else "") + "</div>")
