@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import html
 
+import pandas as pd
+
 import streamlit as st
 
 from ai import assistant, llm
@@ -14,7 +16,7 @@ if not ui.require_data("generate insights"):
 
 ui.page_header("Step 5 · Insights", "AI insights & data story",
                "Findings are produced by deterministic rules from the computed analysis. A language model, if configured, may only rephrase them.")
-ui.synthetic_notice()
+ui.provenance_notice()
 
 r = state.results()
 ins = r["insights"]
@@ -53,21 +55,25 @@ st.subheader(f"Findings ({len(ins)})")
 cats = sorted({i["category"] for i in ins})
 pick = st.segmented_control("Filter", ["All"] + cats, default="All", key="ins_filter", label_visibility="collapsed") or "All"
 badge = {"warning": ("Needs attention", "syn"), "attention": ("Review", "syn"), "info": ("Info", "muted")}
+e = html.escape
 for i in ins:
     if pick != "All" and i["category"] != pick:
         continue
-    e = html.escape
     label, cls = badge[i["severity"]]
     with st.container(border=True):
         st.html(
-            f'<div class="ds-insight"><div class="cat">{e(i["category"])} &nbsp;<span class="ds-pill {cls}">{label}</span></div>'
-            f'<h4>{e(i["title"])}</h4><dl>'
-            f'<dt>Observation</dt><dd>{e(i["observation"])}</dd>'
-            f'<dt>Evidence</dt><dd><ul>{"".join(f"<li>{e(x)}</li>" for x in i["evidence"])}</ul></dd>'
-            f'<dt>Interpretation</dt><dd>{e(i["interpretation"])}</dd>'
-            f'<dt>Limitation</dt><dd>{e(i["limitation"])}</dd>'
-            f'<dt>Next step</dt><dd>{e(i["next_step"])}</dd>'
-            f'<dt>Source</dt><dd style="color:#697468">{e(i["source"])}</dd></dl></div>')
+            f'<article class="ds-insight {e(i["severity"])}"><div class="cat">{e(i["category"])}<span class="ds-pill {cls}">{label}</span>'
+            f'<span class="ds-pill info">{e(i.get("id", ""))}</span></div>'
+            f'<h4>{e(i["title"])}</h4><p class="obs">{e(i["observation"])}</p>'
+            f'<div class="ev"><ul>{"".join(f"<li>{e(str(x))}</li>" for x in i["evidence"])}</ul></div>'
+            f'<div class="grid"><div><b>Interpretation</b>{e(i["interpretation"])}</div><div><b>Limitation</b>{e(i["limitation"])}</div>'
+            f'<div><b>Next step</b>{e(i["next_step"])}</div></div>'
+            f'<div class="src">Evidence {e(i.get("id", ""))} · {e(i["source"])} · dataset version {e(i.get("dataset_version", ""))}</div></article>')
+
+with st.expander(f"Evidence register ({len(r['evidence'])} records)", icon=":material/fact_check:"):
+    st.dataframe(pd.DataFrame([{"ID": x["id"], "Finding": x["finding"], "Computation": x["computation"], "Columns": ", ".join(x["columns"]),
+                                "Version": x["dataset_version"]} for x in r["evidence"]]), width="stretch", hide_index=True)
+    st.caption("Reports and copilot answers cite these identifiers. Each record is regenerated whenever the data or configuration changes.")
 
 if not r.get("modeling"):
     ui.callout("Model-comparison and feature-importance findings appear here after you train models on the Modeling step.", "na")

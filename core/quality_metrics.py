@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 import pandas as pd
+from core.formatting import pct as _pct
 
 NOT_EVALUATED = "Not evaluated — validation rules not configured."
 
@@ -198,4 +199,4 @@ def assess_quality(df: pd.DataFrame, rules: list[dict[str, Any]] | None = None,
 
 def format_dimension(d: dict[str, Any]) -> str:
     """Single display string used by the dashboard, the assistant and reports alike."""
-    return f"{d['value']:.1f}%" if d.get("value") is not None else d.get("message", "Unavailable")
+    return f"{_pct(d['value'], 1)}" if d.get("value") is not None else d.get("message", "Unavailable")

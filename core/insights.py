@@ -11,6 +11,7 @@ from typing import Any
 from core.data_loader import SYNTHETIC_LABEL
 from core.eda import CAUSAL_NOTE
 from core.modeling import LOWER_IS_BETTER, METRIC_LABELS
+from core.formatting import pct as _pct
 
 
 def _insight(category, title, observation, evidence, interpretation, limitation, next_step, severity="info", source=""):
@@ -33,6 +34,23 @@ def generate(results: dict[str, Any]) -> list[dict[str, Any]]:
             "No conclusion from this dataset should be transferred to real passengers, customers, riders or students.",
             "Upload your own data to obtain findings that mean something.", "attention", "Sample dataset registry"))
 
+    elif ds.get("provenance_category") == "user_upload_unverified":
+        out.append(_insight(
+            "Provenance", "User-uploaded data — provenance unverified",
+            f"'{ds['name']}' was uploaded in this session (sha256 {str(ds.get('file_hash') or '')[:12]}…).",
+            [ds["provenance"]],
+            "DataStory AI cannot tell whether the data is real, sampled, synthetic or edited; it neither labels it synthetic nor authenticates it.",
+            "Findings are only as reliable as the data's origin, which the uploader must document.",
+            "Record the source, collection date and any filtering applied before sharing results.", "info", "Upload metadata"))
+    elif ds.get("provenance_category") == "verified_public":
+        out.append(_insight(
+            "Provenance", "Verified bundled public dataset",
+            f"'{ds['name']}' is the copy bundled with scikit-learn.",
+            [ds["provenance"]] + ([f"Licence: {ds['license']}"] if ds.get("license") else []),
+            "Values match a published reference dataset, so results can be compared with the literature.",
+            "Small, curated teaching datasets rarely reflect messy production data.",
+            "Use it to learn the workflow; validate conclusions on your own data.", "info", "Sample dataset registry"))
+
     out.append(_insight(
         "Overview", "Dataset shape and composition",
         f"The dataset has {p['rows']:,} rows and {p['columns']:,} columns.",
@@ -51,8 +69,8 @@ def generate(results: dict[str, Any]) -> list[dict[str, Any]]:
         sev = "warning" if worst["missing_pct"] > 30 else "attention"
         out.append(_insight(
             "Data quality", "Missing values",
-            f"{p['missing_cells']:,} cells are missing ({p['missing_pct']:.2f}% of all cells), across {len(miss_cols)} column(s).",
-            [f"{c['name']}: {c['missing']:,} missing ({c['missing_pct']:.1f}%)" for c in miss_cols[:6]],
+            f"{p['missing_cells']:,} cells are missing ({_pct(p['missing_pct'], 2)} of all cells), across {len(miss_cols)} column(s).",
+            [f"{c['name']}: {c['missing']:,} missing ({_pct(c['missing_pct'], 1)})" for c in miss_cols[:6]],
             f"Missingness is concentrated in '{worst['name']}'. Rows with gaps are dropped or imputed by most analyses, which changes what the remaining data represents.",
             "The data alone cannot tell whether values are missing at random or for a systematic reason.",
             "Decide per column: impute (median/mode/KNN), drop the column if it is mostly empty, or keep missingness as a signal.",
@@ -60,7 +78,7 @@ def generate(results: dict[str, Any]) -> list[dict[str, Any]]:
     else:
         out.append(_insight(
             "Data quality", "No missing values", "Every cell in the dataset is populated.",
-            [f"Completeness: {q['dimensions']['completeness']['value']:.1f}%"],
+            [f"Completeness: {_pct(q['dimensions']['completeness']['value'], 1)}"],
             "No imputation is needed before analysis.",
             "Placeholder codes such as 0, -1 or 'unknown' are not detected as missing.",
             "Scan categorical value lists for placeholder codes.", source="Quality · completeness"))
@@ -68,8 +86,8 @@ def generate(results: dict[str, Any]) -> list[dict[str, Any]]:
     if p["duplicate_rows"]:
         out.append(_insight(
             "Data quality", "Exact duplicate rows",
-            f"{p['duplicate_rows']:,} rows ({p['duplicate_pct']:.2f}%) are exact copies of an earlier row.",
-            [f"Uniqueness: {q['dimensions']['uniqueness']['value']:.2f}%"],
+            f"{p['duplicate_rows']:,} rows ({_pct(p['duplicate_pct'], 2)}) are exact copies of an earlier row.",
+            [f"Uniqueness: {_pct(q['dimensions']['uniqueness']['value'], 2)}"],
             "Duplicates inflate counts and can leak identical records into both the training and the test split.",
             "Identical rows can be legitimate when few columns are recorded; only all-column matches are counted.",
             "Review the duplicates and remove them on the Data Cleaning page if they are not genuine repeats.",
@@ -95,7 +113,7 @@ def generate(results: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(_insight(
             "Distribution", "Potential outliers",
             f"{len(p['outlier_columns'])} numeric column(s) contain values outside the Tukey fences.",
-            [f"{r['column']}: {r['outliers']:,} values ({r['outlier_pct']:.1f}%)" for r in top],
+            [f"{r['column']}: {r['outliers']:,} values ({_pct(r['outlier_pct'], 1)})" for r in top],
             "Extreme values can dominate means, correlations and linear models.",
             "The 1.5×IQR rule flags many legitimate values in skewed distributions; a flagged value is not necessarily an error.",
             "Inspect the box plots, then keep, cap or remove outliers deliberately.",

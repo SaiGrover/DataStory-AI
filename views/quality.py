@@ -7,6 +7,7 @@ import streamlit as st
 from components import ui
 from core import eda, state
 from core import quality_metrics as qm
+from core.formatting import pct as _pct
 
 if not ui.require_data("assess its quality"):
     st.stop()
@@ -25,7 +26,7 @@ for col, key in zip(cols, ("completeness", "uniqueness", "validity", "consistenc
     d = dims[key]
     with col:
         if d.get("value") is not None:
-            st.metric(key.title(), f"{d['value']:.1f}%", help=f"{d['passed']:,} of {d['applicable']:,}. {d['definition']}")
+            st.metric(key.title(), f"{_pct(d['value'], 1)}", help=f"{d['passed']:,} of {d['applicable']:,}. {d['definition']}")
         else:
             st.metric(key.title(), "—", help=d.get("definition"))
             st.caption(d["message"])
@@ -139,7 +140,7 @@ with tab_dups:
     if p["duplicate_rows"] == 0:
         st.success("No exact duplicate rows.", icon=":material/check_circle:")
     else:
-        st.markdown(f"**{p['duplicate_rows']:,}** rows ({p['duplicate_pct']:.2f}%) are exact copies of an earlier row.")
+        st.markdown(f"**{p['duplicate_rows']:,}** rows ({_pct(p['duplicate_pct'], 2)}) are exact copies of an earlier row.")
         st.dataframe(frame[frame.duplicated(keep=False)].sort_values(list(frame.columns)[:3]).head(200), width="stretch")
         st.caption("All copies of duplicated rows are shown (up to 200). Remove them on the Data Cleaning step if they are not genuine repeats.")
 

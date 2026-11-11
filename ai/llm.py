@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from typing import Any
 
 import requests
 
@@ -83,6 +84,33 @@ def chat(messages: list[dict[str, str]], max_tokens: int = 500, temperature: flo
     if not text:
         raise LLMError("Groq returned an empty answer.")
     return text
+
+
+def chat_tools(messages: list[dict[str, Any]], tools: list[dict[str, Any]], max_tokens: int = 300,
+               config: LLMConfig | None = None) -> dict[str, Any]:
+    """One function-calling round: returns the assistant message (``content`` and/or ``tool_calls``).
+
+    The caller validates any proposed call against its own schema before running anything.
+    """
+    cfg = config or get_config()
+    if cfg is None:
+        raise LLMError("GROQ_API_KEY is not configured.")
+    payload: dict = {"model": cfg.model, "messages": messages, "tools": tools, "tool_choice": "auto", "temperature": 0,
+                     "max_completion_tokens": max_tokens}
+    if cfg.model.startswith("openai/gpt-oss"):
+        payload.update(reasoning_effort="low", include_reasoning=False, max_completion_tokens=max_tokens + REASONING_HEADROOM)
+    try:
+        r = requests.post(f"{cfg.base_url}/chat/completions",
+                          headers={"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"},
+                          json=payload, timeout=60)
+    except requests.RequestException as exc:
+        raise LLMError(f"Groq could not be reached ({type(exc).__name__}).") from exc
+    if r.status_code != 200:
+        raise LLMError(_ERRORS.get(r.status_code, f"Groq returned HTTP {r.status_code}."))
+    try:
+        return r.json()["choices"][0]["message"] or {}
+    except (KeyError, IndexError, ValueError, AttributeError, TypeError) as exc:
+        raise LLMError("Groq returned an unexpected response.") from exc
 
 
 _NUM = re.compile(r"(?<![\w.])[-+−]?\d[\d,]*(?:\.\d+)?")

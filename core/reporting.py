@@ -226,9 +226,11 @@ def build_sections(results: dict[str, Any], narrative: str | None = None, includ
     return S
 
 
-def _title(results) -> tuple[str, str]:
+def _title(results, custom: str | None = None) -> tuple[str, str]:
     ds = results["dataset"]
-    return f"DataStory AI Report — {ds['name']}", f"Generated {results['generated_at']}"
+    sub = (f"Generated {results['generated_at']} · dataset version {results.get('data_version', 'v0')} · "
+           f"{ds.get('provenance_label') or ds.get('provenance', '')}")
+    return (custom or f"DataStory AI Report — {ds['name']}"), sub
 
 
 def _strip_md(text: str) -> str:
@@ -236,13 +238,14 @@ def _strip_md(text: str) -> str:
 
 
 # ----------------------------------------------------------------- markdown
-def to_markdown(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None) -> str:
-    title, sub = _title(results)
+def to_markdown(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None,
+        sections: list[dict[str, Any]] | None = None, title: str | None = None) -> str:
+    title, sub = _title(results, title)
     out = [f"# {title}", "", f"_{sub}_", ""]
     if results["dataset"].get("synthetic"):
         out += [f"> **{SYNTHETIC_LABEL}**", ""]
     esc = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
-    for i, sec in enumerate(build_sections(results, narrative, include), 1):
+    for i, sec in enumerate((sections if sections is not None else build_sections(results, narrative, include)), 1):
         out += [f"## {i}. {sec['title']}", ""]
         for b in sec["blocks"]:
             if b["type"] == "p":
@@ -299,14 +302,15 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin:12px 0}th{backgr
 .note{background:#f4f7ef;border-left:3px solid #93ad74;padding:8px 12px;font-size:13px;color:#39463a;margin:10px 0}img{max-width:100%}"""
 
 
-def to_html(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None) -> str:
+def to_html(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None,
+        sections: list[dict[str, Any]] | None = None, title: str | None = None) -> str:
     e = html.escape
-    title, sub = _title(results)
+    title, sub = _title(results, title)
     out = [f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{e(title)}</title><style>{_CSS}</style></head><body>",
            f"<h1>{e(title)}</h1><div class='sub'>{e(sub)}</div>"]
     if results["dataset"].get("synthetic"):
         out.append(f"<div class='banner'>{e(SYNTHETIC_LABEL)}</div>")
-    for i, sec in enumerate(build_sections(results, narrative, include), 1):
+    for i, sec in enumerate((sections if sections is not None else build_sections(results, narrative, include)), 1):
         out.append(f"<h2>{i}. {e(sec['title'])}</h2>")
         for b in sec["blocks"]:
             if b["type"] == "p":
@@ -345,7 +349,8 @@ def _fonts() -> tuple[str, str]:
         return "Helvetica", "Helvetica-Bold"
 
 
-def to_pdf(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None) -> bytes:
+def to_pdf(results: dict[str, Any], narrative: str | None = None, include: list[str] | None = None,
+        sections: list[dict[str, Any]] | None = None, title: str | None = None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
@@ -368,7 +373,7 @@ def to_pdf(results: dict[str, Any], narrative: str | None = None, include: list[
         "head": ParagraphStyle("head", parent=base, fontName=bold, fontSize=8, leading=10.5, spaceAfter=0),
     }
     e = lambda s: html.escape(_strip_md(str(s)), quote=False)
-    title, sub = _title(results)
+    title, sub = _title(results, title)
     synthetic = results["dataset"].get("synthetic")
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm,
@@ -387,7 +392,7 @@ def to_pdf(results: dict[str, Any], narrative: str | None = None, include: list[
     flow: list[Any] = [Paragraph(e(title), st["title"]), Paragraph(e(sub), st["sub"])]
     if synthetic:
         flow.append(Paragraph(e(SYNTHETIC_LABEL), st["banner"]))
-    for i, sec in enumerate(build_sections(results, narrative, include), 1):
+    for i, sec in enumerate((sections if sections is not None else build_sections(results, narrative, include)), 1):
         flow.append(Paragraph(f"{i}. {e(sec['title'])}", st["h2"]))
         for b in sec["blocks"]:
             if b["type"] == "p":
@@ -420,3 +425,116 @@ def to_pdf(results: dict[str, Any], narrative: str | None = None, include: list[
                 flow += [KeepTogether([img]), Spacer(1, 6)]
     doc.build(flow, onFirstPage=footer, onLaterPages=footer)
     return buf.getvalue()
+
+
+# ------------------------------------------------------------ report builder
+EXTRA_SECTIONS = ["Saved charts", "Clustering and segments", "Evidence register", "Reproducibility"]
+ALL_SECTIONS = SECTION_TITLES[:5] + ["Saved charts"] + SECTION_TITLES[5:8] + ["Clustering and segments"] + SECTION_TITLES[8:] \
+    + ["Evidence register", "Reproducibility"]
+REPORT_MODES: dict[str, dict[str, Any]] = {
+    "Executive report": {"desc": "Key findings, evidence, recommendations and limitations.",
+                         "sections": ["Dataset overview", "Data provenance", "Analytical narrative", "Saved charts",
+                                      "Recommendations and next steps", "Limitations"]},
+    "Exploratory data analysis report": {"desc": "Profile, quality, distributions, correlation, missingness and key charts.",
+                                         "sections": ["Dataset overview", "Data provenance", "Data-quality assessment", "Cleaning operations",
+                                                      "Exploratory analysis", "Saved charts", "Limitations", "Evidence register"]},
+    "Machine learning report": {"desc": "Problem, preparation, methodology, evaluation, explainability and limitations.",
+                                "sections": ["Dataset overview", "Data provenance", "Cleaning operations", "Machine-learning methodology",
+                                             "Model evaluation", "Feature importance", "Limitations", "Reproducibility"]},
+    "Comprehensive technical report": {"desc": "The complete workflow with every computed section and the evidence register.",
+                                       "sections": list(ALL_SECTIONS)},
+}
+USER_PREFIX = "Analyst commentary (user-authored, not computed): "
+
+
+def chart_block(df, spec_dict: dict[str, Any], title: str, kinds: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Report blocks for a saved chart spec, recomputed from the current data."""
+    from core import charts as ch
+
+    try:
+        spec = ch.ChartSpec.from_dict(spec_dict)
+        out = ch.render(df, spec, kinds)
+    except Exception as exc:  # noqa: BLE001 - shown in the report instead of failing it
+        return [{"type": "h3", "text": title}, NOTE(f"This chart could not be recomputed on the current data: {exc}")]
+    t = out.table
+    blocks: list[dict[str, Any]] = [{"type": "h3", "text": title}]
+    if spec.chart == "bar" and len(t.columns) >= 2:
+        val = [c for c in t.columns if c != spec.x and c not in ("n", "share_pct")][0]
+        blocks.append(CHART(title, t[spec.x].astype(str).tolist()[:25], [float(v) for v in t[val].tolist()[:25]], xlabel=val))
+    elif spec.chart == "line":
+        blocks.append(CHART(title, [str(v)[:10] for v in t.iloc[:, 0].tolist()][-40:], [float(v) for v in t.iloc[:, 1].tolist()][-40:],
+                            xlabel=str(t.columns[1])))
+    elif spec.chart == "missing":
+        blocks.append(CHART(title, t["column"].tolist()[:25], [float(v) for v in t["missing_pct"].tolist()[:25]], xlabel="% missing"))
+    else:
+        tt = t.head(15)
+        blocks.append(TABLE([str(c) for c in tt.columns], [[v if isinstance(v, str) else fmt(v) for v in row] for row in tt.itertuples(index=False)]))
+    blocks.append(P(_strip_md(out.interpretation)))
+    for n in out.notes:
+        blocks.append(NOTE(n))
+    blocks.append(NOTE(f"Chart specification: {spec.describe()} · recomputed on dataset version {chart_version(df)}."))
+    return blocks
+
+
+def chart_version(df) -> str:  # replaced by the caller-provided version in build_report
+    return "current"
+
+
+def build_report(results: dict[str, Any], df, narrative: str | None, config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ordered, user-configured sections. Computed content and user commentary are kept visibly separate."""
+    base = {s["title"]: s for s in build_sections(results, narrative, None)}
+    version = results.get("data_version", "v0")
+    kinds = results["profile"]["kinds"]
+    charts = [c for c in results.get("charts", []) if c.get("in_report", True) and c["id"] in set(config.get("chart_ids") or [c["id"] for c in results.get("charts", [])])]
+    blocks: list[dict[str, Any]] = []
+    for c in charts:
+        b = chart_block(df, c["spec"], c["title"], kinds)
+        b[-1] = NOTE(b[-1]["text"].replace("version current", f"version {version}")) if b[-1]["type"] == "note" else b[-1]
+        blocks += b
+    base["Saved charts"] = {"title": "Saved charts", "blocks": blocks or [NOTE("No charts were saved to this analysis. Use “Save & add to report” under any chart.")]}
+    cl = results.get("clustering")
+    if cl:
+        names = cl.get("names") or {}
+        rows = [[names.get(str(k), f"Cluster {k}"), v] for k, v in cl["sizes"].items()]
+        met = cl["metrics"]
+        mrows = [[k.replace("_", " ").title(), fmt(v) if v is not None else f"Not defined — {cl.get('metric_notes', {}).get(k, '')}"] for k, v in met.items()]
+        base["Clustering and segments"] = {"title": "Clustering and segments", "blocks": [
+            P(f"Algorithm: {cl['algorithm']} on {', '.join(cl.get('features') or [])}; {cl['n_clusters']} cluster(s)"
+              + (f", {cl['noise_count']:,} noise points" if cl.get("noise_count") else "") + "."),
+            TABLE(["Cluster", "Rows"], rows), TABLE(["Metric", "Value"], mrows),
+            BULLETS(cl.get("descriptions") or ["No descriptions."]),
+            NOTE("Cluster descriptions compare each cluster with the whole dataset; they are not business personas. Two-dimensional "
+                 "projections are reduced views and do not prove separation in the original feature space."),
+        ] + [NOTE(w) for w in cl.get("warnings", [])]}
+    else:
+        base["Clustering and segments"] = {"title": "Clustering and segments", "blocks": [NOTE("No clustering was run on the current data version.")]}
+    ev = results.get("evidence", [])
+    base["Evidence register"] = {"title": "Evidence register", "blocks": [
+        P("Each finding in this report refers to the computation that produced it. Identifiers match the Insights page."),
+        TABLE(["ID", "Finding", "Computation", "Columns", "Dataset version"],
+              [[e["id"], e["finding"], e["computation"], ", ".join(e["columns"]) or "—", e["dataset_version"]] for e in ev])]}
+    ds = results["dataset"]
+    m = results.get("modeling")
+    rep = [["Dataset", ds["name"]], ["Provenance", ds.get("provenance_label", "")], ["Original file sha256", ds.get("file_hash") or "—"],
+           ["Dataset version", version], ["Cleaning steps", len(results["cleaning"]["history"])],
+           ["Random seed (models)", m["seed"] if m else "—"], ["Train/test split", f"{1 - m['test_size']:.0%} / {m['test_size']:.0%}" if m else "—"],
+           ["Cross-validation folds", m["cv_folds"] if m else "—"], ["Generated", results["generated_at"]]]
+    base["Reproducibility"] = {"title": "Reproducibility", "blocks": [
+        TABLE(["Item", "Value"], rep),
+        BULLETS([f"v{i}: {h['label']} — {h['detail']}" for i, h in enumerate(results["cleaning"]["history"], 1)] or ["No cleaning steps."]),
+        NOTE("Export the reproducible notebook from the Report step to re-run every step outside DataStory.")]}
+    order = config.get("sections") or REPORT_MODES[config.get("mode", "Comprehensive technical report")]["sections"]
+    notes = config.get("notes") or {}
+    out = []
+    for title in order:
+        if title not in base:
+            continue
+        sec = {"title": title, "blocks": list(base[title]["blocks"])}
+        note = (notes.get(title) or "").strip()
+        if note:
+            sec["blocks"].append({"type": "note", "text": USER_PREFIX + note})
+        out.append(sec)
+    summary = (config.get("summary") or "").strip()
+    if summary:
+        out.insert(0, {"title": "Summary (analyst-written)", "blocks": [{"type": "note", "text": USER_PREFIX + summary}]})
+    return out

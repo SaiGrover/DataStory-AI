@@ -11,8 +11,10 @@ from typing import Any
 
 import pandas as pd
 
+import re
+
 from core import cleaning, insights, profiler, quality_metrics
-from core.data_loader import DatasetMeta
+from core.data_loader import DatasetMeta, lineage
 
 UNAVAILABLE = "Unavailable"
 
@@ -22,6 +24,8 @@ def build_results(
     history: list[dict[str, Any]] | None = None, rules: list[dict[str, Any]] | None = None,
     exclude_from_completeness: list[str] | None = None, target: str | None = None,
     modeling: dict[str, Any] | None = None, importance: dict[str, Any] | None = None,
+    clustering: dict[str, Any] | None = None, charts: list[dict[str, Any]] | None = None,
+    overview: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     target = target if target in df.columns else None
     profile = profiler.profile_dataset(df, target)
@@ -45,9 +49,38 @@ def build_results(
         "target": target,
         "modeling": modeling,
         "importance": importance,
+        "clustering": clustering,
+        "charts": list(charts or []),
+        "overview": overview,
+        "lineage": lineage(meta, history),
+        "data_version": f"v{len(history or [])}",
     }
     results["insights"] = insights.generate(results)
+    results["evidence"] = evidence_register(results, list(df.columns))
     return results
+
+
+def evidence_register(results: dict[str, Any], columns: list[str]) -> list[dict[str, Any]]:
+    """One EvidenceRecord per finding: dataset version, computation, columns and limitations.
+
+    Findings get stable identifiers (F1, F2, …) that reports and the assistant cite.
+    """
+    version = results["data_version"]
+    ds_id = results["dataset"].get("dataset_id")
+    out = []
+    by_len = sorted(columns, key=len, reverse=True)
+    for i, ins in enumerate(results["insights"], 1):
+        ins["id"] = f"F{i}"
+        ins["dataset_version"] = version
+        text = " ".join([ins["title"], ins["observation"], *map(str, ins["evidence"])])
+        cols = [c for c in by_len if len(c) > 1 and re.search(r"(?<![\w])" + re.escape(c) + r"(?![\w])", text)]
+        out.append({
+            "id": ins["id"], "finding": ins["title"], "category": ins["category"], "dataset_id": ds_id,
+            "dataset_version": version, "computation": ins["source"] or "Computed from the active dataset",
+            "columns": cols[:8], "evidence": ins["evidence"], "limitations": ins["limitation"],
+            "generated_at": results["generated_at"],
+        })
+    return out
 
 
 def fmt(value: Any, digits: int = 4, pct: bool = False) -> str:

@@ -18,8 +18,8 @@ styling.inject()
 pages = navigation.build_pages()
 current = st.navigation(pages, position="hidden")
 
-navigation.header()
-navigation.stepper(pages, current)
+navigation.header(pages)
+navigation.flowchart(pages, current)
 
 try:
     current.run()

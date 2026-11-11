@@ -15,6 +15,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from core.data_loader import SYNTHETIC_LABEL
 from core.modeling import METRIC_LABELS
 from core.quality_metrics import HEALTH_FORMULA, format_dimension
+from core.formatting import pct as _pct
 
 CONCEPTS = [
     ("concept_accuracy", "What accuracy means", "Accuracy is the share of test rows the classifier labelled correctly. It can be misleading when classes are imbalanced, because always predicting the majority class already scores high."),
@@ -68,11 +69,11 @@ def build_documents(results: dict[str, Any]) -> list[dict[str, Any]]:
                      "Quality metrics"))
     miss = sorted([c for c in p["column_details"] if c["missing"]], key=lambda c: -c["missing"])
     docs.append(_doc("missing", "Missing values",
-                     (f"{p['missing_cells']:,} cells are missing ({p['missing_pct']:.2f}% of all cells). Columns with the most missing values: "
-                      + "; ".join(f"{c['name']} {c['missing']:,} ({c['missing_pct']:.1f}%)" for c in miss[:10]) + ".")
+                     (f"{p['missing_cells']:,} cells are missing ({_pct(p['missing_pct'], 2)} of all cells). Columns with the most missing values: "
+                      + "; ".join(f"{c['name']} {c['missing']:,} ({_pct(c['missing_pct'], 1)})" for c in miss[:10]) + ".")
                      if miss else "There are no missing values in any column.", "Profiler · missing-value counts"))
     docs.append(_doc("duplicates", "Duplicate rows",
-                     f"{p['duplicate_rows']:,} exact duplicate rows were found ({(p['duplicate_pct'] or 0):.2f}% of rows).",
+                     f"{p['duplicate_rows']:,} exact duplicate rows were found ({_pct((p['duplicate_pct'] or 0), 2)} of rows).",
                      "Profiler · duplicate detection"))
     structure = []
     if p["constant_columns"]:
@@ -85,7 +86,7 @@ def build_documents(results: dict[str, Any]) -> list[dict[str, Any]]:
                      " ".join(structure) or "No constant, near-constant or identifier-like columns were detected.", "Profiler · cardinality"))
     oc = p["outlier_columns"]
     docs.append(_doc("outliers", "Outliers",
-                     ("Outliers by Tukey's 1.5×IQR rule: " + "; ".join(f"{r['column']} {r['outliers']:,} ({r['outlier_pct']:.1f}%)" for r in oc[:10]) + ".")
+                     ("Outliers by Tukey's 1.5×IQR rule: " + "; ".join(f"{r['column']} {r['outliers']:,} ({_pct(r['outlier_pct'], 1)})" for r in oc[:10]) + ".")
                      if oc else "No numeric column has values outside the Tukey 1.5×IQR fences.", "Profiler · Tukey rule"))
     pairs = results["correlations"]["pairs"]
     docs.append(_doc("correlations", "Correlated features",
@@ -97,7 +98,7 @@ def build_documents(results: dict[str, Any]) -> list[dict[str, Any]]:
     if t and t.get("class_counts"):
         docs.append(_doc("balance", "Target class balance and imbalance",
                          f"Target '{t['name']}' class counts: " + "; ".join(f"{k} {v:,}" for k, v in list(t["class_counts"].items())[:12])
-                         + f". Largest to smallest class ratio is {t['imbalance_ratio']:.2f} to 1; the smallest class is {t['minority_share_pct']:.1f}% of rows. "
+                         + f". Largest to smallest class ratio is {t['imbalance_ratio']:.2f} to 1; the smallest class is {_pct(t['minority_share_pct'], 1)} of rows. "
                          + ("The dataset is imbalanced." if t["imbalance_ratio"] >= 1.5 else "The dataset is not notably imbalanced."),
                          "Profiler · target class counts"))
     elif t:
@@ -116,7 +117,7 @@ def build_documents(results: dict[str, Any]) -> list[dict[str, Any]]:
                      "Profiler-based suggestions"))
 
     for c in p["column_details"][:80]:
-        txt = f"Column '{c['name']}' is {c['kind']} (dtype {c['dtype']}) with {c['unique']:,} distinct values and {c['missing']:,} missing ({(c['missing_pct'] or 0):.1f}%)."
+        txt = f"Column '{c['name']}' is {c['kind']} (dtype {c['dtype']}) with {c['unique']:,} distinct values and {c['missing']:,} missing ({_pct((c['missing_pct'] or 0), 1)})."
         if c.get("mean") is not None:
             txt += f" Mean {c['mean']:.4g}, median {c['median']:.4g}, standard deviation {(c['std'] or 0):.4g}, minimum {c['min']:.4g}, maximum {c['max']:.4g}."
             if c.get("outliers") is not None:

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from core.formatting import pct as _pct
 
 SAGE, MOSS, INK, MUTED, LINE = "#667F4D", "#93AD74", "#172018", "#697468", "#E1E8D8"
 PALETTE = ["#667F4D", "#C98B3A", "#4F7C8A", "#A65D57", "#93AD74", "#8A6FA8", "#D2B24C", "#3F5B45", "#7D8B99", "#B9745F"]
@@ -174,20 +175,20 @@ def interpret_numeric(c: dict[str, Any]) -> str:
         shape = "roughly symmetric" if abs(sk) < 0.5 else ("right-skewed (long tail of high values)" if sk > 0 else "left-skewed (long tail of low values)")
         parts.append(f"Skewness is {sk:.2f}, i.e. {shape}.")
     if c.get("outliers"):
-        parts.append(f"{c['outliers']:,} values ({c['outlier_pct']:.1f}%) lie outside the Tukey fences and may be influential.")
+        parts.append(f"{c['outliers']:,} values ({_pct(c['outlier_pct'], 1)}) lie outside the Tukey fences and may be influential.")
     elif c.get("outliers") == 0:
         parts.append("No values fall outside the Tukey fences.")
     if c["missing"]:
-        parts.append(f"{c['missing']:,} values ({c['missing_pct']:.1f}%) are missing and are excluded from the chart.")
+        parts.append(f"{c['missing']:,} values ({_pct(c['missing_pct'], 1)}) are missing and are excluded from the chart.")
     return " ".join(parts)
 
 
 def interpret_counts(col: str, table: pd.DataFrame, n_unique: int) -> str:
     top = table.iloc[0]
-    txt = f"**{col}** has {n_unique:,} distinct values. The most frequent is '{top[col]}' with {int(top['count']):,} rows ({top['share_pct']:.1f}%)."
+    txt = f"**{col}** has {n_unique:,} distinct values. The most frequent is '{top[col]}' with {int(top['count']):,} rows ({_pct(top['share_pct'], 1)})."
     if len(table) > 1:
         second = table.iloc[1]
-        txt += f" Next is '{second[col]}' with {int(second['count']):,} ({second['share_pct']:.1f}%)."
+        txt += f" Next is '{second[col]}' with {int(second['count']):,} ({_pct(second['share_pct'], 1)})."
     return txt
 
 
@@ -208,8 +209,8 @@ def interpret_missing(profile: dict[str, Any]) -> str:
     if not profile["missing_cells"]:
         return "No missing values were found in any column."
     cols = sorted([c for c in profile["column_details"] if c["missing"]], key=lambda c: -c["missing"])
-    listed = ", ".join(f"{c['name']} ({c['missing_pct']:.1f}%)" for c in cols[:4])
-    return (f"{profile['missing_cells']:,} cells ({profile['missing_pct']:.2f}% of all cells) are missing, spread over "
+    listed = ", ".join(f"{c['name']} ({_pct(c['missing_pct'], 1)})" for c in cols[:4])
+    return (f"{profile['missing_cells']:,} cells ({_pct(profile['missing_pct'], 2)} of all cells) are missing, spread over "
             f"{len(cols)} column(s). Missingness is concentrated in: {listed}.")
 
 

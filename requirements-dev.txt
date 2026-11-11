@@ -1,2 +1,4 @@
 -r requirements.txt
 pytest>=8.0
+nbclient>=0.10
+ipykernel>=6.29

@@ -20,8 +20,8 @@ def _run(at, page=None):
 
 def test_every_page_renders_without_data():
     at = _run(AppTest.from_file(APP, default_timeout=120))
-    for path, *_ in STEPS[1:]:
-        _run(at, path)
+    for step in STEPS[1:]:
+        _run(at, step.path)
 
 
 @pytest.mark.parametrize("sample", ["titanic", "bike"])
@@ -30,8 +30,8 @@ def test_full_workflow(sample):
     at.button(key=f"load_{sample}").click()
     _run(at)
     assert at.session_state["df"] is not None
-    for path, *_ in STEPS:
-        _run(at, path)
+    for step in STEPS:
+        _run(at, step.path)
     # train with defaults, compute importance, generate report
     _run(at, "views/ml.py")
     next(b for b in at.button if b.label == "Train models").click()

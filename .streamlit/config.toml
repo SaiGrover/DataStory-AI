@@ -1,9 +1,44 @@
+# DataStory AI theme. Both appearances are defined so Streamlit's own widgets
+# (inputs, tables, chat, tabs, file uploader…) render correctly in light and
+# dark mode; components/styling.py mirrors these values as CSS tokens.
+
 [theme]
-base = "light"
-primaryColor = "#667F4D"
-backgroundColor = "#FBFBF5"
-secondaryBackgroundColor = "#F1F5EA"
-textColor = "#172018"
+font = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+headingFont = "Manrope:https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 15
+baseRadius = "0.75rem"
+buttonRadius = "0.65rem"
+showWidgetBorder = true
+linkUnderline = false
+headingFontWeights = [800, 750, 700, 700, 650, 600]
+headingFontSizes = ["2.1rem", "1.55rem", "1.2rem", "1.02rem", "0.95rem", "0.85rem"]
+metricValueFontSize = "1.6rem"
+metricValueFontWeight = 700
+paddingTop = "0.75rem"
+paddingBottom = "3rem"
+
+[theme.light]
+primaryColor = "#5E7845"
+backgroundColor = "#FAF8F1"
+secondaryBackgroundColor = "#F0F2E8"
+textColor = "#1B221B"
+borderColor = "#DDE3D3"
+linkColor = "#4F6A39"
+codeBackgroundColor = "#EFF2E7"
+dataframeHeaderBackgroundColor = "#F0F2E8"
+chartCategoricalColors = ["#5E7845", "#C98B3A", "#4F7C8A", "#A65D57", "#93AD74", "#8A6FA8", "#D2B24C", "#3F5B45", "#7D8B99", "#B9745F"]
+
+[theme.dark]
+primaryColor = "#8FAE6E"
+backgroundColor = "#121612"
+secondaryBackgroundColor = "#1B211B"
+textColor = "#ECEADF"
+borderColor = "#2E372D"
+linkColor = "#A9C58A"
+codeBackgroundColor = "#1B211B"
+dataframeHeaderBackgroundColor = "#1E251E"
+chartCategoricalColors = ["#9DBB7C", "#E0A75A", "#73A6B4", "#D08A82", "#B8CF9B", "#B39CD0", "#E3C86E", "#7FA487", "#A3AFBC", "#D59A84"]
 
 [server]
 maxUploadSize = 200

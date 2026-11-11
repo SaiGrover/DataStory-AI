@@ -125,7 +125,11 @@ def _value_filters(text: str, df: pd.DataFrame, kinds: dict[str, str], used: lis
         col = resolve_columns(m.group(1), list(df.columns))
         if col:
             op = {"=": "==", "is": "==", "is not": "!=", "==": "==", "!=": "!="}.get(m.group(2), m.group(2))
-            filters.append({"column": col[0], "op": op, "value": m.group(3).strip()})
+            val = m.group(3).strip()
+            if kinds.get(col[0]) in ("categorical", "text"):
+                actual = {str(v).lower(): str(v) for v in df[col[0]].dropna().unique()[:2000]}
+                val = actual.get(val.lower(), val)
+            filters.append({"column": col[0], "op": op, "value": val})
     for m in re.finditer(r"\b(?:for|in|only|among)\s+(?:the\s+)?([a-z0-9][\w\- ]{1,30}?)(?=$|[,.?]|\s+(?:by|and|over|per|vs|across)\b)", low):
         phrase = m.group(1).strip()
         for c, k in kinds.items():

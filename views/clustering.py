@@ -71,7 +71,7 @@ if run:
     try:
         with st.spinner(f"Running {cl.ALGORITHMS[algo]}…"):
             res = cl.run_clustering(frame, features, algo, params, scale, "pca" if use_pca else None, n_comp, seed)
-        st.session_state["clustering"] = {"result": res, "names": {}, "version": st.session_state["_version"]}
+        state.set_clustering(res)
     except cl.ClusteringError as exc:
         st.error(str(exc), icon=":material/error:")
 
@@ -97,7 +97,7 @@ with right:
         ui.empty_state("No clustering run yet", "Choose features and an algorithm, then select “Run clustering”.")
         st.stop()
     res, names = stash["result"], stash.setdefault("names", {})
-    if stash["version"] != st.session_state["_version"]:
+    if stash.get("data_key") != state.data_key():
         st.warning("The dataset changed after this clustering run. Results below describe the previous data — run clustering again.",
                    icon=":material/history:")
         st.stop()

@@ -15,6 +15,7 @@ import pandas as pd
 from pandas.api import types as ptypes
 
 from core.impact import compute_impact
+from core.formatting import pct as _pct
 
 
 class CleaningError(ValueError):
@@ -431,14 +432,14 @@ def suggest_steps(profile: dict[str, Any]) -> list[str]:
     for c in profile["column_details"]:
         pct = c["missing_pct"] or 0
         if pct > 50:
-            tips.append(f"'{c['name']}' is {pct:.1f}% missing — consider dropping it or treating missingness as information.")
+            tips.append(f"'{c['name']}' is {_pct(pct, 1)} missing — consider dropping it or treating missingness as information.")
         elif pct > 0:
             how = "median" if c["kind"] == "numeric" else "mode"
-            tips.append(f"'{c['name']}' is {pct:.1f}% missing — {how} imputation is a common starting point.")
+            tips.append(f"'{c['name']}' is {_pct(pct, 1)} missing — {how} imputation is a common starting point.")
     for c in profile["constant_columns"]:
         tips.append(f"'{c}' holds a single value — it carries no information for analysis.")
     for c in profile["id_candidates"]:
         tips.append(f"'{c}' looks like an identifier — usually excluded from modelling.")
     for r in profile["outlier_columns"][:5]:
-        tips.append(f"'{r['column']}' has {r['outliers']:,} values outside the Tukey fences ({r['outlier_pct']:.1f}%) — inspect before deciding to cap or keep.")
+        tips.append(f"'{r['column']}' has {r['outliers']:,} values outside the Tukey fences ({_pct(r['outlier_pct'], 1)}) — inspect before deciding to cap or keep.")
     return tips
