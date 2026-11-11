@@ -12,6 +12,9 @@ from core import state
 st.set_page_config(page_title="DataStory AI", page_icon=":material/bar_chart:", layout="wide",
                    initial_sidebar_state="collapsed")
 
+from components.theme import restore_after_reload
+
+restore_after_reload()
 state.init()
 styling.inject()
 

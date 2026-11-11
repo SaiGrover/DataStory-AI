@@ -30,8 +30,9 @@ from core.formatting import metric, num, pct
 
 UNSUPPORTED = ("I can only run DataStory's built-in analyses (summaries, statistics, grouping, filtering, correlations, charts, "
                "model and quality results). I don't execute code, run SQL or shell commands, or access files or the network.")
-_CODE = re.compile(r"\b(exec|eval|import\s+\w+|os\.|subprocess|shell|bash|powershell|sql|select\s+\*|drop\s+table|delete\s+from|"
-                   r"rm\s+-|python code|run (this|the following) code|__\w+__|open\(|requests\.|curl|wget)\b", re.I)
+_CODE = re.compile(r"(\b(exec|eval|subprocess|shell|bash|powershell|curl|wget)\b|\bimport\s+\w+|\bos\.\w+|__\w+__|\bopen\(|"
+                   r"\brequests\.|python code|run (this|the following)( \w+)? code|\bselect\s+.+\s+from\s+\w+|\bdrop\s+table\b|"
+                   r"\bdelete\s+from\b|\brm\s+-\w+|\bsql\b)", re.I)
 
 
 @dataclass

@@ -125,7 +125,7 @@ def _hero() -> None:
     left, right = st.columns([1.15, 1], gap="large", vertical_alignment="center")
     with left:
         st.html('<span class="ds-eyebrow">Evidence-based analytics</span>'
-                '<div class="hero-title">Data analysis made <span class="hero-script">simple</span>,<br>'
+                '<div class="hero-title">Data analysis made <span style="white-space:nowrap"><span class="hero-script">simple</span>,</span><br>'
                 'insights made <span class="hero-script">clear</span>.</div>'
                 '<p class="hero-lead">Load a dataset and DataStory AI works like a careful junior analyst: it profiles the data, '
                 'recommends analyses, cleans transparently, charts what matters, trains and explains models, finds segments and '
@@ -211,7 +211,7 @@ def _overview() -> None:
         ui.section("Target candidates")
         tg = ov_["targets"]
         rows = [{"Column": t["column"], "Verdict": t["verdict"], "Task": t["task"] or "—",
-                 "Why": (t["reasons"] or t["warnings"] or [""])[0]} for t in tg["candidates"][:8]]
+                 "Why": (t.get("blocking") or t["reasons"] or t["warnings"] or [""])[0]} for t in tg["candidates"][:8]]
         if rows:
             st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True, height=min(330, 36 * (len(rows) + 1)))
         st.caption(tg["recommendation"])

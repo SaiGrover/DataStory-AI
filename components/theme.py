@@ -10,9 +10,11 @@ How theming works
   ``<html data-ds-theme>``, which switches DataStory's own CSS tokens. It never
   touches Streamlit's internal controls.
 * The sun/moon button stores the requested appearance under the browser key
-  Streamlit itself reads for its theme preference and reloads the page. If
-  browser storage is unavailable, the button explains how to switch theme from
-  the app menu instead (graceful fallback).
+  Streamlit itself reads for its theme preference and reloads the page. A
+  reload starts a new Streamlit session, so the current analysis is first
+  parked in memory under a one-time random token (core/handoff.py) and claimed
+  by the new session — nothing is written to disk and the entry expires after
+  two minutes. If browser storage is blocked, the button reports that instead.
 """
 from __future__ import annotations
 
@@ -51,11 +53,12 @@ function luminance(color) {
 }
 
 export default function (component) {
-  const { data, parentElement } = component;
+  const { data, parentElement, setTriggerValue } = component;
   const btn = parentElement.querySelector(".ds-theme");
   if (!btn) return;
+  btn.disabled = false;
   const detect = () => {
-    const bg = getComputedStyle(parentElement).getPropertyValue("--st-background-color").trim();
+    const bg = getComputedStyle(btn).getPropertyValue("--st-background-color").trim();
     const mode = bg ? (luminance(bg) < 0.4 ? "dark" : "light") : null;
     if (mode) {
       if (document.documentElement.dataset.dsTheme !== mode) document.documentElement.dataset.dsTheme = mode;
@@ -65,24 +68,32 @@ export default function (component) {
   };
   detect();
   if (!window.__dsThemeTimer) window.__dsThemeTimer = setInterval(detect, 700);
-  btn.onclick = () => {
-    const next = detect() === "dark" ? "Light" : "Dark";
+  const pending = data && data.pending;
+  if (pending && window.__dsThemeHandled !== pending.token) {
+    window.__dsThemeHandled = pending.token;
     try {
       const paths = (data && data.paths) || [""];
-      let path = window.location.pathname;
+      const path = window.location.pathname;
       let base = path.endsWith("/") ? path : path + "/";
       for (const p of [...paths].sort((a, b) => b.length - a.length)) {
         if (p && (path === "/" + p || path.endsWith("/" + p))) { base = path.slice(0, path.length - p.length); break; }
       }
       if (!base.endsWith("/")) base += "/";
-      const keys = new Set([path, ...paths.map(p => (base + p).replace(/\\/+$/, "") || "/")]);
-      keys.add(base); keys.add(base.replace(/\\/+$/, "") || "/");
-      for (const k of keys) window.localStorage.setItem(`stActiveTheme-${k}-v2`, JSON.stringify(next));
-      document.documentElement.dataset.dsTheme = next.toLowerCase();
-      window.location.reload();
+      const keys = new Set([path, base, base.replace(/\/+$/, "") || "/"]);
+      for (const p of paths) keys.add((base + p).replace(/\/+$/, "") || "/");
+      for (const k of keys) window.localStorage.setItem(`stActiveTheme-${k}-v2`, JSON.stringify(pending.theme));
+      document.documentElement.dataset.dsTheme = pending.theme.toLowerCase();
+      const url = new URL(window.location.href);
+      url.searchParams.set("restore", pending.token);
+      window.location.replace(url.toString());
     } catch (e) {
-      btn.title = "Your browser blocked theme storage. Use the app menu (⋮ → Settings → Theme) to switch.";
+      btn.title = "Your browser blocked theme storage, so the theme could not be switched.";
     }
+    return;
+  }
+  btn.onclick = () => {
+    btn.disabled = true;
+    setTriggerValue("toggle", detect() === "dark" ? "Light" : "Dark");
   };
 }
 """
@@ -90,9 +101,42 @@ export default function (component) {
 _TOGGLE = st.components.v2.component("ds_theme_toggle", html=_HTML, css=_CSS, js=_JS)
 
 
+HANDOFF_KEYS = ("_report", "_nb", "previous_training_results", "_rec_open", "_nl_spec", "_nl_assume")
+
+
+def _on_toggle() -> None:
+    """Park this session's analysis for the reload that applies the new theme."""
+    from core import handoff, state
+
+    raw = st.session_state.get("ds_theme")
+    val = raw.get("toggle") if hasattr(raw, "get") else getattr(raw, "toggle", None)
+    if val not in ("Light", "Dark"):
+        return
+    keys = list(state._DEFAULTS) + list(HANDOFF_KEYS)
+    payload = {k: st.session_state[k] for k in keys if k in st.session_state}
+    st.session_state["_theme_pending"] = {"token": handoff.park(payload), "theme": val}
+
+
+def restore_after_reload() -> bool:
+    """Claim the analysis parked by the theme toggle (called once at app start)."""
+    from core import handoff
+
+    token = st.query_params.get("restore")
+    if not token:
+        return False
+    payload = handoff.claim(str(token))
+    del st.query_params["restore"]
+    if payload is None:
+        return False
+    for k, v in payload.items():
+        st.session_state[k] = v
+    return True
+
+
 def theme_toggle(paths: list[str], key: str = "ds_theme") -> None:
     """Render the sun/moon toggle. ``paths`` are the url paths of every page (default page = "")."""
-    _TOGGLE(data={"paths": paths}, key=key)
+    pending = st.session_state.pop("_theme_pending", None)
+    _TOGGLE(data={"paths": paths, "pending": pending}, key=key, on_toggle_change=_on_toggle)
 
 
 def is_dark() -> bool:

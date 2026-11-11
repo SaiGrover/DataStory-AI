@@ -70,7 +70,8 @@ def suggestions() -> list[str]:
     if r.get("target"):
         out.append(f"Which features are most strongly associated with {r['target']}?")
     for rec in ov["chart_recommendations"][:2]:
-        out.append(f"Show {rec['title'][0].lower() + rec['title'][1:]}")
+        t = rec["title"]
+        out.append(f"Show {t if t[:1].isupper() and t.split()[0] in r['profile']['kinds'] else t[0].lower() + t[1:]}")
     if r["profile"]["missing_cells"]:
         out.append("Show missing values by column")
     out.append("Which model performed best?" if r.get("modeling") else "What cleaning steps should I perform?")

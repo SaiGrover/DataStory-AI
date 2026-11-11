@@ -181,6 +181,7 @@ with right:
                  if str(r.Name).strip() and str(r.Name).strip() != default[str(int(r.Label))]}
     if new_names != names:
         stash["names"] = new_names
+        state._bump()  # cluster names appear in results, reports and the copilot
         st.rerun()
 
     st.download_button("Download dataset with cluster labels (CSV)", to_csv_bytes(cl.labels_frame(frame, res, stash["names"])),
