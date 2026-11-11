@@ -29,14 +29,7 @@ data/uploads/
 temp/
 reports/
 
-# Build caches / generated metadata
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts
-node_modules/
-web/node_modules/
-web/dist/
-output/
+web/output/
 tmp/
 
 # IDE
@@ -51,7 +44,5 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+.pytest_cache/
 
-# RAG index
-*.index
-*.faiss
