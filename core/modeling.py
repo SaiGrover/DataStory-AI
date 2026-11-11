@@ -32,6 +32,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
+from core import diagnostics
 from core.profiler import infer_kinds
 
 MAX_CLASSES = 50
@@ -368,17 +369,28 @@ def train_models(
                     entry["best_params"] = {k.replace("model__", ""): v for k, v in search.best_params_.items()}
                     entry["cv"] = {"metric": primary_metric, "mean": float(sign * search.cv_results_["mean_test_score"][i]),
                                    "std": float(search.cv_results_["std_test_score"][i]), "folds": folds,
-                                   "candidates": int(len(search.cv_results_["params"]))}
+                                   "candidates": int(len(search.cv_results_["params"])),
+                                   "scores": [float(sign * search.cv_results_[f"split{k}_test_score"][i]) for k in range(folds)],
+                                   "evaluated_on": "training data (cross-validation folds), not the held-out test set"}
                 else:
                     if tuning != "none" and not grid:
                         entry["notes"].append("No hyperparameters to tune for this model.")
                     if cv is not None:
                         scores = cross_validate(pipe, X_train, y_train, scoring=scoring, cv=cv, n_jobs=1)["test_score"]
                         entry["cv"] = {"metric": primary_metric, "mean": float(sign * scores.mean()),
-                                       "std": float(scores.std()), "folds": folds}
+                                       "std": float(scores.std()), "folds": folds,
+                                       "scores": [float(sign * v) for v in scores],
+                                       "evaluated_on": "training data (cross-validation folds), not the held-out test set"}
                     pipe.fit(X_train, y_train)
             entry.update(_classification_metrics(pipe, X_test, y_test, classes) if task == "classification"
                          else _regression_metrics(pipe, X_test, y_test))
+            entry["metrics_evaluated_on"] = f"held-out test set ({len(X_test):,} rows)"
+            try:
+                entry["diagnostics"] = (diagnostics.classification_diagnostics(pipe, X_test, y_test, classes)
+                                        if task == "classification"
+                                        else diagnostics.regression_diagnostics(pipe, X_test, y_test, prep.categorical, seed))
+            except Exception as exc:  # noqa: BLE001 - diagnostics must never sink training
+                entry["diagnostics"] = {"error": f"Diagnostics unavailable: {type(exc).__name__}: {exc}"}
             out.pipelines[name] = pipe
         except Exception as exc:  # one failing model must not sink the leaderboard
             entry["error"] = f"{type(exc).__name__}: {exc}"

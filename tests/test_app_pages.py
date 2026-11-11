@@ -58,3 +58,24 @@ def test_full_workflow(sample):
     _run(at)
     next(b for b in at.button if b.label == "Preview changes").click()
     _run(at)
+
+
+def test_ml_page_blocks_identifier_target_and_shows_diagnostics():
+    at = _run(AppTest.from_file(APP, default_timeout=120))
+    at.button(key="load_churn").click()
+    _run(at)
+    _run(at, "views/ml.py")
+    assert at.session_state["target"] == "Churn"
+    assert any("Readiness assessment" in s.value for s in at.subheader)
+    at.selectbox(key="ml_target").set_value("CustomerID")
+    _run(at)
+    train = next(b for b in at.button if b.label == "Train models")
+    assert train.disabled
+    at.selectbox(key="ml_target").set_value("Churn")
+    _run(at)
+    next(b for b in at.button if b.label == "Train models").click()
+    _run(at)
+    assert at.session_state["training"] is not None
+    _run(at, "views/model_results.py")
+    at.toggle(key="mr_cm_norm").set_value(True)
+    _run(at)
